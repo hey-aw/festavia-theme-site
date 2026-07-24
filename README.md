@@ -11,8 +11,9 @@ in D1.
 - 6:00 PM: the existing Festavia automation applies the eligible winner,
   verifies the physical light, publishes the applied theme, and sends one
   Discord DM through the Discord for Codex plugin.
-- Every minute while the poll is active: deliver first-vote notifications to
-  the same approved Discord DM. Vote changes do not create another alert.
+- A local macOS daemon checks the public-safe notification outbox every 30
+  seconds and delivers first-vote notifications to the same approved Discord
+  DM. Vote changes do not create another alert.
 
 The public app has no route to the Hue bridge. Protected publishing routes use a
 bearer token stored in Sites runtime secrets and macOS Keychain.
@@ -47,10 +48,21 @@ The reviewable automation source prompts are in `automations/`. The poll
 publisher canonicalizes each date's opening and closing timestamps to 8:00 AM
 and 5:50 PM America/Los_Angeles.
 
-`automations/pink-door-vote-notifications.md` is the source prompt for the
-one-minute Discord delivery automation. The site stores only a public-safe
-notification outbox; Discord credentials and approved chat identifiers remain
-local to the Discord for Codex plugin.
+## Discord notification daemon
+
+The daemon reuses the Discord for Codex bot credential and sole allowlisted
+recipient. Discord identifiers and credentials stay in memory; its crash
+recovery file stores only notification event IDs.
+
+```bash
+npm run daemon:vote-notifications:check
+npm run daemon:vote-notifications:install
+```
+
+The installer manages the
+`com.hey-aw.pink-door-discord-vote-notifications` user LaunchAgent. Runtime
+health and owner-only logs are stored under
+`~/.codex/daemons/pink-door-discord-vote-notifications/`.
 
 Production: <https://house-with-pink-door.hey-aw.chatgpt.site>
 
