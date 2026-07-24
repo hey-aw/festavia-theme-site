@@ -1,0 +1,54 @@
+{
+  "opensAt": "2026-07-23T15:00:00.000Z",
+  "closesAt": "2026-07-24T06:00:00.000Z",
+  "candidates": [
+    {
+      "id": "vanilla-ice-cream-day",
+      "preferenceRank": 1,
+      "observanceName": "National Vanilla Ice Cream Day",
+      "observanceSynopsis": "National Vanilla Ice Cream Day celebrates the classic flavor that makes a perfect base for cones, sauces, and colorful toppings.",
+      "sourceUrl": "https://www.timeanddate.com/holidays/fun/vanilla-ice-cream-day",
+      "palette": [
+        { "name": "Vanilla scoop", "hex": "#FFF3C4" },
+        { "name": "Waffle cone", "hex": "#C98232" },
+        { "name": "Cherry sauce", "hex": "#D7263D" },
+        { "name": "Blue sprinkle", "hex": "#2563EB" },
+        { "name": "Mint sprinkle", "hex": "#2DD4BF" }
+      ],
+      "mode": "Static gradient",
+      "effect": "no_effect",
+      "lightingSynopsis": "Vanilla and waffle-cone warmth are dotted with cherry, blue, and mint-sprinkle color.",
+      "fallbackPalette": [
+        { "name": "Vanilla scoop", "hex": "#FFF3C4" },
+        { "name": "Waffle cone", "hex": "#C98232" },
+        { "name": "Cherry sauce", "hex": "#D7263D" },
+        { "name": "Blue sprinkle", "hex": "#2563EB" },
+        { "name": "Mint sprinkle", "hex": "#2DD4BF" }
+      ]
+    },
+    {
+      "id": "world-brain-day",
+      "preferenceRank": 2,
+      "observanceName": "World Brain Day",
+      "observanceSynopsis": "World Brain Day brings global attention to brain health, prevention, access, and care.",
+      "sourceUrl": "https://wfneurology.org/world-brain-day-2026",
+      "palette": [
+        { "name": "Deep cortex navy", "hex": "#111827" },
+        { "name": "Neural violet", "hex": "#7C3AED" },
+        { "name": "Synapse cyan", "hex": "#22D3EE" },
+        { "name": "Access green", "hex": "#22C55E" },
+        { "name": "Care white", "hex": "#F8FAFC" }
+      ],
+      "mode": "Static gradient",
+      "effect": "no_effect",
+      "lightingSynopsis": "Deep navy and violet connect through cyan, green, and white like a calm network of signals.",
+      "fallbackPalette": [
+        { "name": "Deep cortex navy", "hex": "#111827" },
+        { "name": "Neural violet", "hex": "#7C3AED" },
+        { "name": "Synapse cyan", "hex": "#22D3EE" },
+        { "name": "Access green", "hex": "#22C55E" },
+        { "name": "Care white", "hex": "#F8FAFC" }
+      ]
+    }
+  ]
+}
