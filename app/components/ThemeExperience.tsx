@@ -7,8 +7,8 @@ import {
   Download,
   ExternalLink,
   RefreshCw,
+  SquareCheckBig,
   Sparkles,
-  Vote,
 } from "lucide-react";
 import { formatPacificDate } from "@/lib/pacific-time";
 import { summarizePollResults } from "@/lib/poll-results";
@@ -68,6 +68,16 @@ function formatPacificTime(instant: string | null): string {
     minute: "2-digit",
     timeZoneName: "short",
   }).format(date);
+}
+
+function treatmentName(theme: Pick<ThemeCandidate, "mode" | "effect">): string {
+  if (theme.mode !== "Hue effect" || theme.effect === "no_effect") {
+    return "Gradient";
+  }
+  return theme.effect
+    .split("_")
+    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join(" ");
 }
 
 function PollResults({
@@ -231,7 +241,6 @@ function Palette({ colors }: { colors: PaletteColor[] }) {
           />
           <span>
             <strong>{color.name}</strong>
-            <small>{color.hex}</small>
           </span>
         </div>
       ))}
@@ -270,15 +279,9 @@ function ThemeDetails({
         </a>
       </div>
       <Palette colors={theme.palette} />
-      <div className="treatment">
-        <span>
-          <strong>Mode</strong>
-          {theme.mode}
-        </span>
-        <span>
-          <strong>Effect</strong>
-          {theme.effect}
-        </span>
+      <div className="light-style">
+        <Sparkles size={17} aria-hidden="true" />
+        <span>{treatmentName(theme)}</span>
       </div>
       <p className="lighting-note">{theme.lightingSynopsis}</p>
     </>
@@ -324,10 +327,18 @@ export function ThemeExperience() {
     };
   }, []);
 
-  const todayTheme = useMemo(() => {
+  const appliedTheme = useMemo(() => {
     if (!poll) return themes[0] ?? null;
-    return themes.find((theme) => theme.date === poll.date) ?? themes[0] ?? null;
+    if (poll.phase !== "complete") return null;
+    return themes.find((theme) => theme.date === poll.date) ?? null;
   }, [poll, themes]);
+  const archiveThemes = useMemo(
+    () =>
+      themes
+        .filter((theme) => theme.date !== appliedTheme?.date)
+        .slice(0, 6),
+    [appliedTheme, themes],
+  );
 
   async function voteFor(candidateId: string) {
     setVotingFor(candidateId);
@@ -351,7 +362,11 @@ export function ThemeExperience() {
     }
   }
 
-  const heroPalette = todayTheme?.palette ?? fallbackPalette;
+  const votingPalette =
+    poll?.phase === "open"
+      ? poll.candidates.flatMap((candidate) => candidate.palette)
+      : [];
+  const heroPalette = appliedTheme?.palette ?? votingPalette ?? fallbackPalette;
   const heroStyle = {
     "--hero-palette": paletteBackground(heroPalette),
   } as CSSProperties & { "--hero-palette": string };
@@ -372,16 +387,34 @@ export function ThemeExperience() {
           <h1>The House with the Pink Door</h1>
           {loading ? (
             <p className="hero-status">Finding tonight&apos;s colors...</p>
-          ) : todayTheme ? (
+          ) : appliedTheme ? (
             <div className="hero-theme">
               <span className="date-label">
-                {formatPacificDate(todayTheme.date)}
+                {formatPacificDate(appliedTheme.date)}
               </span>
-              <h2>{todayTheme.observanceName}</h2>
-              <p>{todayTheme.observanceSynopsis}</p>
+              <h2>{appliedTheme.observanceName}</h2>
+              <p>{appliedTheme.observanceSynopsis}</p>
               <a href="#tonight">
                 See tonight&apos;s lights <Sparkles size={18} aria-hidden="true" />
               </a>
+            </div>
+          ) : poll?.phase === "open" ? (
+            <div className="hero-theme hero-vote-prompt">
+              <p>Two themes are ready. Choose the colors for tonight.</p>
+              <a href="#vote">
+                Vote on tonight&apos;s lights
+                <SquareCheckBig size={18} aria-hidden="true" />
+              </a>
+            </div>
+          ) : poll?.phase === "preparing" ? (
+            <div className="hero-theme">
+              <h2>Tonight&apos;s lights are being prepared</h2>
+              <p>The winning theme will appear here after it reaches the house.</p>
+            </div>
+          ) : poll?.phase === "scheduled" ? (
+            <div className="hero-theme">
+              <h2>Tonight&apos;s choices arrive at 8 AM</h2>
+              <p>Come back soon to help choose the evening display.</p>
             </div>
           ) : (
             <div className="hero-theme">
@@ -434,7 +467,7 @@ export function ThemeExperience() {
                     ) : selected ? (
                       <Check size={18} aria-hidden="true" />
                     ) : (
-                      <Vote size={18} aria-hidden="true" />
+                      <SquareCheckBig size={18} aria-hidden="true" />
                     )}
                     {selected
                       ? "Your choice"
@@ -449,8 +482,7 @@ export function ThemeExperience() {
           {notice ? <p className="vote-notice">{notice}</p> : null}
           {poll.yourVote ? <PollResults poll={poll} live /> : null}
           <p className="privacy-note">
-            One changeable vote per browser. No sign-in and no personal
-            information collected.
+            Vote once per day. We don&apos;t collect any personal information.
           </p>
         </section>
       ) : null}
@@ -484,39 +516,41 @@ export function ThemeExperience() {
         <PollResults poll={poll} live={false} standalone />
       ) : null}
 
-      <section className="tonight-section" id="tonight">
-        <div className="section-heading">
-          <p className="eyebrow">On the lights</p>
-          <h2>{todayTheme ? "Tonight's display" : "The latest display"}</h2>
-        </div>
-        {todayTheme ? (
+      {appliedTheme ? (
+        <section className="tonight-section" id="tonight">
+          <div className="section-heading">
+            <p className="eyebrow">On the lights</p>
+            <h2>Tonight&apos;s display</h2>
+          </div>
           <div className="tonight-layout">
             <div
               className="palette-stage"
-              style={{ background: paletteBackground(todayTheme.palette) }}
+              style={{ background: paletteBackground(appliedTheme.palette) }}
             >
               <LightStrand
-                palette={todayTheme.palette}
-                effect={todayTheme.effect}
+                palette={appliedTheme.palette}
+                effect={appliedTheme.effect}
               />
-              <span>{formatPacificDate(todayTheme.date)}</span>
+              <span>{formatPacificDate(appliedTheme.date)}</span>
             </div>
             <div className="tonight-story">
-              <ThemeDetails theme={todayTheme} />
-              {todayTheme.totalVoteCount > 0 ? (
+              <ThemeDetails theme={appliedTheme} />
+              {appliedTheme.totalVoteCount > 0 ? (
                 <p className="vote-result">
-                  Chosen with {todayTheme.selectedVoteCount} of{" "}
-                  {todayTheme.totalVoteCount} votes.
+                  Chosen with {appliedTheme.selectedVoteCount} of{" "}
+                  {appliedTheme.totalVoteCount} votes.
                 </p>
               ) : null}
-              {todayTheme.substitutionNote ? (
+              {appliedTheme.substitutionNote ? (
                 <p className="substitution-note">
-                  {todayTheme.substitutionNote}
+                  {appliedTheme.substitutionNote}
                 </p>
               ) : null}
             </div>
           </div>
-        ) : loadError ? (
+        </section>
+      ) : loadError ? (
+        <section className="tonight-section">
           <div className="empty-state">
             <p>Tonight&apos;s theme could not be loaded just now.</p>
             <button
@@ -531,21 +565,17 @@ export function ThemeExperience() {
               Try again
             </button>
           </div>
-        ) : (
-          <div className="empty-state">
-            <p>Tonight&apos;s theme will appear here after the lights are set.</p>
-          </div>
-        )}
-      </section>
+        </section>
+      ) : null}
 
-      {themes.length > 1 ? (
+      {archiveThemes.length > 0 ? (
         <section className="archive-section">
           <div className="section-heading">
             <p className="eyebrow">Seven nights of color</p>
             <h2>Recent themes</h2>
           </div>
           <div className="archive-grid">
-            {themes.slice(1, 7).map((theme) => (
+            {archiveThemes.map((theme) => (
               <article className="archive-item" key={theme.date}>
                 <div
                   className="archive-color"
