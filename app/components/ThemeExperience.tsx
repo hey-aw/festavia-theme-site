@@ -11,6 +11,7 @@ import {
   Vote,
 } from "lucide-react";
 import { formatPacificDate } from "@/lib/pacific-time";
+import { summarizePollResults } from "@/lib/poll-results";
 import type {
   AppliedTheme,
   PaletteColor,
@@ -20,6 +21,7 @@ import type {
 
 type ThemeResponse = { themes: AppliedTheme[] };
 type BulbStyle = CSSProperties & { "--bulb-color": string };
+type ResultBarStyle = CSSProperties & { "--result-width": string };
 
 const fallbackPalette: PaletteColor[] = [
   { name: "Door pink", hex: "#F52975" },
@@ -54,6 +56,129 @@ function paletteBackground(palette: PaletteColor[]): string {
   return `linear-gradient(105deg, ${colors
     .map((color, index) => `${color.hex} ${Math.round((index / Math.max(1, colors.length - 1)) * 100)}%`)
     .join(", ")})`;
+}
+
+function formatPacificTime(instant: string | null): string {
+  if (!instant) return "the posted closing time";
+  const date = new Date(instant);
+  if (Number.isNaN(date.getTime())) return "the posted closing time";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(date);
+}
+
+function PollResults({
+  poll,
+  live,
+  standalone = false,
+}: {
+  poll: PublicPoll;
+  live: boolean;
+  standalone?: boolean;
+}) {
+  const {
+    results,
+    countsAvailable,
+    totalVotes,
+    highestVoteCount,
+    leaderIds,
+  } = summarizePollResults(poll.candidates);
+  const selectedCandidate = results.find(
+    ({ candidate }) => candidate.id === poll.yourVote,
+  )?.candidate;
+  const leader = results.find(({ candidate }) =>
+    leaderIds.includes(candidate.id),
+  )?.candidate;
+  const outcome = !countsAvailable
+    ? "Results are updating."
+    : totalVotes === 0
+      ? "No votes have been counted yet."
+      : leaderIds.length > 1
+        ? `The vote is tied at ${highestVoteCount} ${highestVoteCount === 1 ? "vote" : "votes"} each.`
+        : `${leader?.observanceName ?? "The leading theme"} ${live ? "currently leads" : "finished ahead"} with ${highestVoteCount} ${highestVoteCount === 1 ? "vote" : "votes"}.`;
+  const closeTime = formatPacificTime(poll.closesAt);
+
+  return (
+    <section
+      className={`poll-results ${standalone ? "poll-results-standalone" : ""}`}
+      aria-labelledby={standalone ? "closed-results-title" : "live-results-title"}
+    >
+      <div className="results-heading">
+        <div>
+          <p className="eyebrow">{live ? "The neighborhood so far" : "The vote"}</p>
+          <h3 id={standalone ? "closed-results-title" : "live-results-title"}>
+            {live ? "Live results" : "Final results"}
+          </h3>
+        </div>
+        <p className="results-context">
+          <Clock3 size={17} aria-hidden="true" />
+          {live
+            ? `You can change your vote until ${closeTime}.`
+            : `Voting closed at ${closeTime}.`}
+        </p>
+      </div>
+
+      {selectedCandidate ? (
+        <p className="selected-choice">
+          <Check size={18} aria-hidden="true" />
+          Your choice: <strong>{selectedCandidate.observanceName}</strong>
+        </p>
+      ) : null}
+
+      <div className="result-list">
+        {results.map(({ candidate, voteCount, percentage }) => {
+          const countLabel =
+            voteCount === null
+              ? "Count updating"
+              : `${voteCount} ${voteCount === 1 ? "vote" : "votes"}`;
+          const percentageLabel = countsAvailable
+            ? `${percentage}%`
+            : "Updating";
+          return (
+            <div className="result-row" key={candidate.id}>
+              <div className="result-label">
+                <strong>{candidate.observanceName}</strong>
+                <span>
+                  {countLabel} <b>{percentageLabel}</b>
+                </span>
+              </div>
+              <div
+                className="result-track"
+                role="progressbar"
+                aria-label={`${candidate.observanceName} vote share`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={countsAvailable ? percentage : undefined}
+                aria-valuetext={
+                  countsAvailable
+                    ? `${countLabel}, ${percentageLabel}`
+                    : "Vote count updating"
+                }
+              >
+                <span
+                  className="result-fill"
+                  style={
+                    {
+                      "--result-width": countsAvailable
+                        ? `${percentage}%`
+                        : "0%",
+                    } as ResultBarStyle
+                  }
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="result-outcome" aria-live="polite">
+        {outcome}
+      </p>
+    </section>
+  );
 }
 
 function LightStrand({
@@ -311,13 +436,18 @@ export function ThemeExperience() {
                     ) : (
                       <Vote size={18} aria-hidden="true" />
                     )}
-                    {selected ? "Your choice" : "Vote for this theme"}
+                    {selected
+                      ? "Your choice"
+                      : poll.yourVote
+                        ? "Choose instead"
+                        : "Vote for this theme"}
                   </button>
                 </article>
               );
             })}
           </div>
           {notice ? <p className="vote-notice">{notice}</p> : null}
+          {poll.yourVote ? <PollResults poll={poll} live /> : null}
           <p className="privacy-note">
             One changeable vote per browser. No sign-in and no personal
             information collected.
@@ -343,6 +473,15 @@ export function ThemeExperience() {
             for the lights.
           </p>
         </section>
+      ) : null}
+
+      {poll &&
+      (poll.phase === "preparing" || poll.phase === "complete") &&
+      poll.candidates.length > 0 &&
+      poll.candidates.some(
+        (candidate) => typeof candidate.voteCount === "number",
+      ) ? (
+        <PollResults poll={poll} live={false} standalone />
       ) : null}
 
       <section className="tonight-section" id="tonight">

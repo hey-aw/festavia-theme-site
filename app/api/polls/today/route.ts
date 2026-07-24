@@ -44,7 +44,8 @@ export async function GET(request: NextRequest) {
     candidatesForDate(date),
     voteForVoter(date, identity.voterHash),
   ]);
-  const revealCounts = phase === "preparing" || phase === "complete";
+  const revealCounts =
+    yourVote !== null || phase === "preparing" || phase === "complete";
   const payload: PublicPoll = {
     date,
     opensAt: poll.opensAt,

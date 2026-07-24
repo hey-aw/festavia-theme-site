@@ -474,6 +474,133 @@ h1 {
   font-size: 0.78rem;
 }
 
+.poll-results {
+  margin-top: 42px;
+  padding: 34px 0 4px;
+  border-top: 2px solid var(--ink);
+}
+
+.poll-results-standalone {
+  margin-top: 0;
+  padding: 64px clamp(24px, 6vw, 96px);
+  border-top: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-bright);
+}
+
+.results-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 30px;
+  margin-bottom: 22px;
+}
+
+.results-heading .eyebrow {
+  margin-bottom: 7px;
+}
+
+.results-heading h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  line-height: 1;
+}
+
+.results-context,
+.selected-choice,
+.result-outcome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.results-context {
+  max-width: 330px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.results-context svg,
+.selected-choice svg {
+  flex: 0 0 auto;
+}
+
+.selected-choice {
+  width: fit-content;
+  margin: 0 0 24px;
+  padding: 10px 12px;
+  background: var(--chartreuse);
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.result-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 30px;
+}
+
+.result-row {
+  min-width: 0;
+}
+
+.result-label {
+  min-height: 44px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+}
+
+.result-label strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.result-label span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.result-label b {
+  margin-left: 5px;
+  color: var(--pink-deep);
+  font-size: 1rem;
+}
+
+.result-track {
+  height: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.result-fill {
+  display: block;
+  width: var(--result-width);
+  height: 100%;
+  background: var(--pink);
+  transition: width 420ms ease;
+}
+
+.result-row:nth-child(even) .result-fill {
+  background: var(--cyan);
+}
+
+.result-outcome {
+  margin: 26px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--pink-deep);
+  font-weight: 760;
+}
+
 .status-band {
   min-height: 92px;
   display: flex;
@@ -707,7 +834,8 @@ footer p {
   }
 
   .candidate-grid,
-  .tonight-layout {
+  .tonight-layout,
+  .result-list {
     grid-template-columns: 1fr;
   }
 
@@ -772,6 +900,31 @@ footer p {
 
   .candidate {
     padding: 20px;
+  }
+
+  .poll-results {
+    margin-top: 32px;
+    padding-top: 28px;
+  }
+
+  .poll-results-standalone {
+    margin-top: 0;
+    padding: 48px 20px;
+  }
+
+  .results-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .result-list {
+    gap: 24px;
+  }
+
+  .result-label {
+    min-height: 0;
+    align-items: start;
   }
 
   .palette {

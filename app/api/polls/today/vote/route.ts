@@ -33,13 +33,15 @@ export async function PUT(request: NextRequest) {
   }
 
   const identity = await voterIdentity(request, date);
+  let isNewVote = false;
   try {
-    await castVote({
+    const result = await castVote({
       date,
       voterHash: identity.voterHash,
       rateHash: identity.rateHash,
       candidateId,
     });
+    isNewVote = result.isNewVote;
   } catch (error) {
     if (error instanceof Error && error.message === "RATE_LIMITED") {
       return Response.json(
@@ -55,5 +57,5 @@ export async function PUT(request: NextRequest) {
 
   const headers = new Headers({ "Cache-Control": "private, no-store" });
   if (identity.setCookie) headers.set("Set-Cookie", identity.setCookie);
-  return Response.json({ ok: true, candidateId }, { headers });
+  return Response.json({ ok: true, candidateId, isNewVote }, { headers });
 }

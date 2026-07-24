@@ -7,6 +7,17 @@ import { rawDb } from "./runtime-env";
 
 type DatabaseRow = Record<string, unknown>;
 
+export type PendingVoteNotification = {
+  eventId: string;
+  date: string;
+  candidateId: string;
+  observanceName: string;
+  candidateVoteCount: number;
+  totalVoteCount: number;
+  closesAt: string;
+  createdAt: string;
+};
+
 function parsePalette(value: unknown): PaletteColor[] {
   if (typeof value !== "string") return [];
   try {
@@ -140,7 +151,7 @@ export async function castVote(input: {
   voterHash: string;
   rateHash: string;
   candidateId: string;
-}): Promise<void> {
+}): Promise<{ isNewVote: boolean }> {
   const database = rawDb();
   const now = new Date().toISOString();
   const rateRow = await database
@@ -161,7 +172,7 @@ export async function castVote(input: {
     .first<{ id: string }>();
   if (!candidate) throw new Error("INVALID_CANDIDATE");
 
-  await database.batch([
+  const results = await database.batch([
     database
       .prepare(
         `INSERT INTO vote_rate_limits (date, rate_hash, attempts, updated_at)
@@ -185,7 +196,78 @@ export async function castVote(input: {
         now,
         now,
       ),
+    database
+      .prepare(
+        `INSERT INTO vote_notification_events (
+          id, poll_date, voter_hash, candidate_id, created_at, delivered_at
+        ) VALUES (?, ?, ?, ?, ?, NULL)
+        ON CONFLICT(poll_date, voter_hash) DO NOTHING`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        input.date,
+        input.voterHash,
+        input.candidateId,
+        now,
+      ),
   ]);
+  return { isNewVote: Number(results[2]?.meta.changes ?? 0) > 0 };
+}
+
+export async function pendingVoteNotifications(
+  date: string,
+  limit = 50,
+): Promise<PendingVoteNotification[]> {
+  const result = await rawDb()
+    .prepare(
+      `SELECT e.id, e.poll_date, e.candidate_id, e.created_at,
+        c.observance_name, p.closes_at,
+        (
+          SELECT COUNT(*)
+          FROM votes candidate_votes
+          WHERE candidate_votes.poll_date = e.poll_date
+            AND candidate_votes.candidate_id = e.candidate_id
+        ) AS candidate_vote_count,
+        (
+          SELECT COUNT(*)
+          FROM votes all_votes
+          WHERE all_votes.poll_date = e.poll_date
+        ) AS total_vote_count
+      FROM vote_notification_events e
+      JOIN polls p ON p.date = e.poll_date
+      JOIN theme_candidates c
+        ON c.poll_date = e.poll_date AND c.id = e.candidate_id
+      WHERE e.poll_date = ? AND e.delivered_at IS NULL
+      ORDER BY e.created_at ASC, e.id ASC
+      LIMIT ?`,
+    )
+    .bind(date, limit)
+    .all<DatabaseRow>();
+  return result.results.map((row) => ({
+    eventId: String(row.id),
+    date: String(row.poll_date),
+    candidateId: String(row.candidate_id),
+    observanceName: String(row.observance_name),
+    candidateVoteCount: Number(row.candidate_vote_count ?? 0),
+    totalVoteCount: Number(row.total_vote_count ?? 0),
+    closesAt: String(row.closes_at),
+    createdAt: String(row.created_at),
+  }));
+}
+
+export async function markVoteNotificationDelivered(
+  date: string,
+  eventId: string,
+): Promise<boolean> {
+  const result = await rawDb()
+    .prepare(
+      `UPDATE vote_notification_events
+      SET delivered_at = COALESCE(delivered_at, ?)
+      WHERE poll_date = ? AND id = ?`,
+    )
+    .bind(new Date().toISOString(), date, eventId)
+    .run();
+  return Number(result.meta.changes ?? 0) > 0;
 }
 
 export async function upsertPoll(input: {
@@ -243,7 +325,7 @@ export async function upsertPoll(input: {
             observance_synopsis, source_url, palette_json, mode, effect,
             lighting_synopsis, fallback_palette_json, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET
+          ON CONFLICT(poll_date, id) DO UPDATE SET
             preference_rank = excluded.preference_rank,
             observance_name = excluded.observance_name,
             observance_synopsis = excluded.observance_synopsis,

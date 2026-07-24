@@ -5,7 +5,7 @@ import {
   type PaletteColor,
   type ThemeCandidate,
 } from "./theme-types";
-import { isIsoDate } from "./pacific-time";
+import { isIsoDate, pacificInstant } from "./pacific-time";
 
 const HEX_COLOR = /^#[0-9A-F]{6}$/;
 const CANDIDATE_ID = /^[a-z0-9][a-z0-9-]{2,63}$/;
@@ -28,9 +28,14 @@ function stringField(
   return normalized;
 }
 
-function paletteField(value: unknown, label: string): PaletteColor[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 5) {
-    throw new Error(`${label} must contain 1-5 colors.`);
+function paletteField(
+  value: unknown,
+  label: string,
+  min = 1,
+  max = 5,
+): PaletteColor[] {
+  if (!Array.isArray(value) || value.length < min || value.length > max) {
+    throw new Error(`${label} must contain ${min}-${max} colors.`);
   }
   return value.map((entry, index) => {
     if (!isRecord(entry)) throw new Error(`${label}[${index}] is invalid.`);
@@ -75,10 +80,16 @@ export function validateCandidate(value: unknown): ThemeCandidate {
   if (!HUE_EFFECTS.includes(effect as (typeof HUE_EFFECTS)[number])) {
     throw new Error("Unsupported effect.");
   }
-  const palette = paletteField(value.palette, "palette");
-  const fallbackPalette = paletteField(value.fallbackPalette, "fallbackPalette");
+  const palette =
+    mode === "Hue effect"
+      ? paletteField(value.palette, "palette", 0, 1)
+      : paletteField(value.palette, "palette", 3, 5);
+  const fallbackPalette = paletteField(value.fallbackPalette, "fallbackPalette", 3, 5);
   if (mode !== "Hue effect" && effect !== "no_effect") {
     throw new Error("Static themes must use no_effect.");
+  }
+  if (mode === "Hue effect" && effect === "no_effect") {
+    throw new Error("Hue effect themes must select an effect.");
   }
   return {
     id,
@@ -124,8 +135,15 @@ export function validatePollPayload(
   if (!Number.isFinite(Date.parse(opensAt)) || !Number.isFinite(Date.parse(closesAt))) {
     throw new Error("Poll times must be valid ISO timestamps.");
   }
-  if (Date.parse(opensAt) >= Date.parse(closesAt)) {
-    throw new Error("Poll must close after it opens.");
+  const expectedOpensAt = pacificInstant(date, 8, 0);
+  const expectedClosesAt = pacificInstant(date, 17, 50);
+  if (
+    new Date(opensAt).toISOString() !== expectedOpensAt ||
+    new Date(closesAt).toISOString() !== expectedClosesAt
+  ) {
+    throw new Error(
+      "Poll must open at 08:00 and close at 17:50 America/Los_Angeles.",
+    );
   }
   if (!Array.isArray(value.candidates) || value.candidates.length !== 2) {
     throw new Error("Poll must contain exactly two candidates.");
@@ -147,14 +165,24 @@ export function validatePollPayload(
 export function validateThemePayload(value: unknown, date: string): AppliedTheme {
   if (!isIsoDate(date)) throw new Error("Invalid theme date.");
   if (!isRecord(value)) throw new Error("Theme payload must be an object.");
-  const candidate = validateCandidate({
-    ...value,
-    id: typeof value.selectedCandidateId === "string"
-      ? value.selectedCandidateId
-      : "manual-theme",
-    preferenceRank: 1,
-    fallbackPalette: value.palette,
-  });
+  const mode = stringField(value.mode, "mode", 1, 40);
+  if (!THEME_MODES.includes(mode as (typeof THEME_MODES)[number])) {
+    throw new Error("Unsupported mode.");
+  }
+  const effect = stringField(value.effect, "effect", 1, 40);
+  if (!HUE_EFFECTS.includes(effect as (typeof HUE_EFFECTS)[number])) {
+    throw new Error("Unsupported effect.");
+  }
+  if (mode !== "Hue effect" && effect !== "no_effect") {
+    throw new Error("Static themes must use no_effect.");
+  }
+  if (mode === "Hue effect" && effect === "no_effect") {
+    throw new Error("Hue effect themes must select an effect.");
+  }
+  const palette =
+    mode === "Hue effect"
+      ? paletteField(value.palette, "palette", 0, 1)
+      : paletteField(value.palette, "palette", 3, 5);
   const publicStatus = value.publicStatus;
   if (publicStatus !== "active" && publicStatus !== "unavailable") {
     throw new Error("publicStatus must be active or unavailable.");
@@ -179,13 +207,28 @@ export function validateThemePayload(value: unknown, date: string): AppliedTheme
       : stringField(value.substitutionNote, "substitutionNote", 3, 240);
   return {
     date,
-    observanceName: candidate.observanceName,
-    observanceSynopsis: candidate.observanceSynopsis,
-    sourceUrl: candidate.sourceUrl,
-    palette: candidate.palette,
-    mode: candidate.mode,
-    effect: candidate.effect,
-    lightingSynopsis: candidate.lightingSynopsis,
+    observanceName: stringField(
+      value.observanceName,
+      "observanceName",
+      2,
+      100,
+    ),
+    observanceSynopsis: stringField(
+      value.observanceSynopsis,
+      "observanceSynopsis",
+      20,
+      500,
+    ),
+    sourceUrl: sourceUrlField(value.sourceUrl),
+    palette,
+    mode: mode as AppliedTheme["mode"],
+    effect: effect as AppliedTheme["effect"],
+    lightingSynopsis: stringField(
+      value.lightingSynopsis,
+      "lightingSynopsis",
+      10,
+      320,
+    ),
     publicStatus,
     selectedCandidateId,
     selectedVoteCount,

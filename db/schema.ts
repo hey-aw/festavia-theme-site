@@ -1,4 +1,5 @@
 import {
+  foreignKey,
   index,
   integer,
   primaryKey,
@@ -21,7 +22,7 @@ export const polls = sqliteTable("polls", {
 export const themeCandidates = sqliteTable(
   "theme_candidates",
   {
-    id: text("id").primaryKey(),
+    id: text("id").notNull(),
     pollDate: text("poll_date")
       .notNull()
       .references(() => polls.date, { onDelete: "cascade" }),
@@ -40,6 +41,7 @@ export const themeCandidates = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
+    primaryKey({ columns: [table.pollDate, table.id] }),
     uniqueIndex("theme_candidates_poll_rank_idx").on(
       table.pollDate,
       table.preferenceRank,
@@ -56,14 +58,48 @@ export const votes = sqliteTable(
       .references(() => polls.date, { onDelete: "cascade" }),
     voterHash: text("voter_hash").notNull(),
     candidateId: text("candidate_id")
-      .notNull()
-      .references(() => themeCandidates.id, { onDelete: "cascade" }),
+      .notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.pollDate, table.voterHash] }),
+    foreignKey({
+      columns: [table.pollDate, table.candidateId],
+      foreignColumns: [themeCandidates.pollDate, themeCandidates.id],
+      name: "votes_poll_candidate_fk",
+    }).onDelete("cascade"),
     index("votes_poll_candidate_idx").on(table.pollDate, table.candidateId),
+  ],
+);
+
+export const voteNotificationEvents = sqliteTable(
+  "vote_notification_events",
+  {
+    id: text("id").primaryKey(),
+    pollDate: text("poll_date")
+      .notNull()
+      .references(() => polls.date, { onDelete: "cascade" }),
+    voterHash: text("voter_hash").notNull(),
+    candidateId: text("candidate_id").notNull(),
+    createdAt: text("created_at").notNull(),
+    deliveredAt: text("delivered_at"),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.pollDate, table.candidateId],
+      foreignColumns: [themeCandidates.pollDate, themeCandidates.id],
+      name: "vote_notification_events_poll_candidate_fk",
+    }).onDelete("cascade"),
+    uniqueIndex("vote_notification_events_voter_idx").on(
+      table.pollDate,
+      table.voterHash,
+    ),
+    index("vote_notification_events_pending_idx").on(
+      table.pollDate,
+      table.deliveredAt,
+      table.createdAt,
+    ),
   ],
 );
 
