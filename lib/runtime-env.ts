@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 
 type PinkDoorEnv = {
   DB: D1Database;
+  SOCIAL_ASSETS?: R2Bucket;
   PUBLISH_TOKEN?: string;
   COOKIE_SIGNING_SECRET?: string;
 };
@@ -16,4 +17,8 @@ export function rawDb(): D1Database {
     throw new Error("The DB binding is unavailable.");
   }
   return database;
+}
+
+export function socialAssets(): R2Bucket | null {
+  return runtimeEnv().SOCIAL_ASSETS ?? null;
 }

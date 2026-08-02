@@ -10,7 +10,7 @@ const KEYCHAIN_SERVICE = "festavia-theme-site-publisher";
 
 function usage() {
   console.error(
-    "Usage: pink-door-publisher.mjs <poll|result|theme|notifications|ack-notification> <YYYY-MM-DD> [payload.json]",
+    "Usage: pink-door-publisher.mjs <poll|result|theme|social-poll|social-theme|notifications|ack-notification> <YYYY-MM-DD> [payload-or-image]",
   );
   process.exit(2);
 }
@@ -67,7 +67,7 @@ async function requestWithRetry(url, init, retries = 1) {
 
 const [operation, date, payloadPath] = process.argv.slice(2);
 if (
-  !["poll", "result", "theme", "notifications", "ack-notification"].includes(
+  !["poll", "result", "theme", "social-poll", "social-theme", "notifications", "ack-notification"].includes(
     operation,
   ) ||
   !date
@@ -75,7 +75,7 @@ if (
   usage();
 }
 if (
-  ["poll", "theme", "ack-notification"].includes(operation) &&
+  ["poll", "theme", "social-poll", "social-theme", "ack-notification"].includes(operation) &&
   !payloadPath
 ) {
   usage();
@@ -93,6 +93,14 @@ if (operation === "result" || operation === "notifications") {
       ? `/api/admin/polls/${date}/result`
       : `/api/admin/polls/${date}/notifications`;
   init = { method: "GET", headers };
+} else if (operation === "social-poll" || operation === "social-theme") {
+  const kind = operation === "social-poll" ? "poll" : "theme";
+  endpoint = `/api/admin/social/${date}/${kind}`;
+  init = {
+    method: "PUT",
+    headers: { ...headers, "Content-Type": "image/png" },
+    body: await readFile(payloadPath),
+  };
 } else {
   const parsedPayload = JSON.parse(await readFile(payloadPath, "utf8"));
   const payload = JSON.stringify(
