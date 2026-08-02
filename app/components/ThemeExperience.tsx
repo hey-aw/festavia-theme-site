@@ -197,21 +197,16 @@ function PollResults({
 
 function LightStrand({
   palette,
-  mode,
   effect,
   compact = false,
 }: {
   palette: PaletteColor[];
-  mode: ThemeCandidate["mode"];
   effect: string;
   compact?: boolean;
 }) {
   const colors = palette.length ? palette : fallbackPalette;
-  const hasThemeColors = palette.length > 0;
   const bulbs = Array.from({ length: compact ? 12 : 24 }, (_, index) => {
-    const color = hasThemeColors
-      ? colors[index % colors.length]
-      : { name: "Hue-native effect colors", hex: "#FFFFFF" };
+    const color = colors[index % colors.length];
     return (
       <span
         aria-hidden="true"
@@ -224,24 +219,14 @@ function LightStrand({
 
   return (
     <div
-      className={`light-strand ${compact ? "light-strand-compact" : ""} preview-${mode === "Hue effect" ? "effect" : "gradient"} motion-${effectMotion(effect)}`}
-      style={
-        {
-          "--preview-gradient": hasThemeColors
-            ? paletteBackground(palette)
-            : "none",
-        } as CSSProperties
-      }
+      className={`light-strand ${compact ? "light-strand-compact" : ""} motion-${effectMotion(effect)}`}
       aria-label={
-        mode === "Hue effect"
-          ? hasThemeColors
-            ? `Gentle visual interpretation of the ${effect} effect using ${palette[0]?.name} tint`
-            : `Gentle visual interpretation of the Hue-native ${effect} effect; its colors are set by Hue`
-          : `Static gradient preview using ${palette.map((color) => color.name).join(", ")}`
+        effect === "no_effect"
+          ? "Static palette preview"
+          : `Gentle visual interpretation of the ${effect} effect`
       }
       role="img"
     >
-      <div className="preview-gradient" aria-hidden="true" />
       <div className="strand-wire" />
       <div className="bulb-row">{bulbs}</div>
     </div>
@@ -287,7 +272,6 @@ function ThemeDetails({
     <>
       <LightStrand
         palette={theme.palette}
-        mode={theme.mode}
         effect={theme.effect}
         compact={compact}
       />
@@ -570,7 +554,6 @@ export function ThemeExperience() {
             >
               <LightStrand
                 palette={appliedTheme.palette}
-                mode={appliedTheme.mode}
                 effect={appliedTheme.effect}
               />
               <span>{formatPacificDate(appliedTheme.date)}</span>
@@ -605,7 +588,6 @@ export function ThemeExperience() {
             >
               <LightStrand
                 palette={lastNightTheme.palette}
-                mode={lastNightTheme.mode}
                 effect={lastNightTheme.effect}
               />
               <span>{formatPacificDate(lastNightTheme.date)}</span>
@@ -643,14 +625,11 @@ export function ThemeExperience() {
           <div className="archive-grid">
             {archiveThemes.map((theme) => (
               <article className="archive-item" key={theme.date}>
-                <div className="archive-preview">
-                  <LightStrand
-                    palette={theme.palette}
-                    mode={theme.mode}
-                    effect={theme.effect}
-                    compact
-                  />
-                </div>
+                <div
+                  className="archive-color"
+                  style={{ background: paletteBackground(theme.palette) }}
+                  aria-hidden="true"
+                />
                 <span>{formatPacificDate(theme.date)}</span>
                 <h3>{theme.observanceName}</h3>
                 <p>{theme.lightingSynopsis}</p>
