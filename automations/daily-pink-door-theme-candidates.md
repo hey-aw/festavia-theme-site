@@ -2,15 +2,38 @@
 
 At each run, use the current calendar date in America/Los_Angeles.
 
-1. Read this automation's memory first. Target only the Philips Hue light named exactly "Festavia permanent 1" (currently in Porch). Use the local OpenHue CLI and, only when necessary to inspect Festavia-specific capabilities, the local Hue v2 API credentials already configured by OpenHue. Never print, log, store in a payload, or send bridge credentials, application keys, Hue resource identifiers, or private diagnostics.
+Use `$control-hue-lights` and follow its Festavia theme project adapter. The repository's `scripts/festavia-hue.mjs` helper is authoritative for this workflow; do not replace it with the skill's generic Hue helper or direct OpenHue writes.
 
-2. This is a read-only lighting run. Confirm the exact light exists, then read its current Hue v2 `gradient`, `effects_v2`, `effects`, `timed_effects`, and `dynamics` capabilities. Do not change the light's power, brightness, color, gradient, effect, timing, dynamics, alert, signaling, scene, or any other state.
+1. Read this automation's memory first. Target only the Philips Hue light named exactly "Festavia permanent 1" (currently in Porch). Do not use `openhue get` or `openhue set` from the Codex command runner; macOS Local Network Privacy blocks that executable even though it works in Terminal. Never print, log, store in a payload, or send bridge credentials, application keys, Hue resource identifiers, or private diagnostics.
+
+2. This is a read-only lighting run. From this project directory, run:
+
+`node scripts/festavia-hue.mjs inspect`
+
+The helper reads the existing OpenHue bridge configuration, passes the application key to system `curl` through stdin so it never appears in process arguments, resolves the exact light uniquely, and emits only sanitized state plus `gradient`, effect, timed-effect, and dynamics capabilities. Treat a nonzero exit, a target count other than one, or missing capabilities as failure. Do not change the light's power, brightness, color, gradient, effect, timing, dynamics, alert, signaling, scene, or any other state.
 
 3. Browse the web and verify observances for that exact local date with credible sources. Prefer official organizations, government agencies, museums, UN bodies, or established observance publishers; cross-check quirky observances when practical. Never use an unsourced social post or generated list as verification. Prefer two distinct verified observances. If only one credible observance is available, create two clearly different, safe treatments for that observance.
 
 4. Create exactly two complete candidates that match the public API contract. Give them unique lowercase hyphenated IDs and unique preference ranks 1 and 2. Each candidate must include `id`, `preferenceRank`, `observanceName`, `observanceSynopsis`, `sourceUrl`, `palette`, `mode`, `effect`, `lightingSynopsis`, and `fallbackPalette`.
 
 Static gradient candidates must use `mode: "Static gradient"`, `effect: "no_effect"`, and 3-5 clearly distinguishable sRGB colors in `palette`. Hue effect candidates may be used only when a gentle built-in effect clearly fits and the effect is currently reported by Festavia's `effects_v2.action.effect_values` or, only if v2 is unavailable, legacy `effects.effect_values`. Allowed effects are `candle`, `fire`, `prism`, `sparkle`, `opal`, `glisten`, `underwater`, `cosmos`, `sunbeam`, and `enchant`. For an effect with a supported custom tint, `palette` must contain exactly one tint color. For a Hue-native fixed-color effect, `palette` must be empty. Never fabricate effect colors. Do not offer a color-temperature effect candidate. Every candidate must include a tasteful 3-5 color static `fallbackPalette` that can be applied if its preferred effect becomes ineligible.
+
+Actively consider a Hue effect for each observance. When a currently supported gentle effect is a clear celebratory fit, give it meaningful preference and normally include at least one effect candidate rather than defaulting both candidates to static gradients. Do not force an effect when the connection is weak or the result would feel somber, alarming, or overly literal.
+
+Use this effect-selection guide as descriptive shorthand; the current Festavia capability response is always authoritative:
+
+- `candle`: Soft, irregular warm flicker. Cozy, intimate, historic, lantern, craft, and traditional celebrations. Low motion and generally suitable outdoors. Use sparingly for solemn observances so it does not read as a vigil.
+- `fire`: Stronger warm flame-like flicker. Bonfire, hearth, cooking, camping, and fire-centered festivities. Medium motion and visually assertive outdoors. Use sparingly; avoid wildfire, fire-safety, extreme-heat, tragedy, or memorial associations.
+- `prism`: Flowing, full-spectrum color change. Broadly joyful celebrations, arts, creativity, science, inclusion, and color-centered occasions. Medium motion and a strong Festavia exterior fit.
+- `sparkle`: Distinct point-like twinkles across the string. Holidays, achievements, stars, glamour, parties, and festive milestones. Medium motion but celebratory rather than frantic; a strong Festavia exterior fit.
+- `opal`: Soft pearlescent or iridescent color movement. Elegant, artistic, wellness, nature, and refined celebrations. Low-to-medium motion and well suited to calm exterior ambience.
+- `glisten`: Small polished highlights with a restrained shimmer. Elegant civic, seasonal, nature, and achievement themes. Low-to-medium motion and a strong calm exterior fit.
+- `underwater`: Slow aquatic color drift. Oceans, marine life, aquariums, water science, and playful seaside themes. Medium motion. It can read cool or dark, so use only when the overall treatment remains bright, welcoming, and celebratory; avoid overly literal use for water-related harm or tragedy.
+- `cosmos`: Deep celestial drift with star-like color movement. Astronomy, space exploration, science, and night-sky celebrations. Medium motion and effective outdoors, but it can read dark; balance it with an upbeat synopsis and fallback.
+- `sunbeam`: Warm luminous movement suggestive of sunlight. Optimism, summer, daylight, solar, energy, and bright seasonal celebrations. Low-to-medium motion and a strong welcoming exterior fit. Avoid overly literal use for heat emergencies or drought.
+- `enchant`: Magical, saturated color movement. Fantasy, books, imagination, theater, art, and whimsical festivals. Medium motion and a festive exterior fit; avoid it for serious observances where whimsy would be disrespectful.
+
+For every effect, determine color handling from the current `effects_v2.action.parameters` capability, not from the effect name or this guide. If the selected effect currently accepts a custom color input, use exactly one tasteful sRGB tint in `palette`. Otherwise let Hue control the native effect colors and use an empty `palette`. Legacy effect availability alone does not prove custom-tint support. Never claim that a tint changes all native colors or describe unreported Hue-native colors as exact hex values.
 
 Keep both treatments calm and suitable for exterior ambient lighting. Never propose timed effects, dynamic palettes, alerts, signaling, external animation loops, repeated whole-light changes, rapid changes, flashing, or strobing.
 

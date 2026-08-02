@@ -30,16 +30,16 @@ export async function generateMetadata(): Promise<Metadata> {
     description:
       "Vote for tonight's verified observance theme and see the colors lighting The House with the Pink Door.",
     openGraph: {
-      title: "The House with the Pink Door",
+      title: "Crème Brûlée or Chicken Fingers?",
       description:
-        "Two verified themes. One nightly light display. Vote before 5:50 PM Pacific.",
+        "Choose tonight's Pink Door light theme. Vote before 5:50 PM Pacific.",
       images: [{ url: "/og.png", width: 1536, height: 1024 }],
     },
     twitter: {
       card: "summary_large_image",
-      title: "The House with the Pink Door",
+      title: "Crème Brûlée or Chicken Fingers?",
       description:
-        "Two verified themes. One nightly light display. Vote before 5:50 PM Pacific.",
+        "Choose tonight's Pink Door light theme. Vote before 5:50 PM Pacific.",
       images: ["/og.png"],
     },
   };

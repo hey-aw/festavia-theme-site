@@ -48,6 +48,36 @@ The reviewable automation source prompts are in `automations/`. The poll
 publisher canonicalizes each date's opening and closing timestamps to 8:00 AM
 and 5:50 PM America/Los_Angeles.
 
+## Festavia Hue helper
+
+Codex lighting work in this project invokes the user-level
+`$control-hue-lights` skill, which recognizes the Festavia workflow and
+delegates to this repository's adapter. The repo-local adapter remains the
+source of truth for candidate validation, the fixed target, effect persistence,
+and static fallback behavior. Automated runs must not use the skill's generic
+light and scene writer to bypass those rules.
+
+The local Hue v2 helper avoids the OpenHue CLI connection path that macOS Local
+Network Privacy blocks inside Codex. It reads the existing OpenHue
+configuration, passes the application key to system `curl` through stdin, and
+never emits bridge credentials or Hue resource identifiers.
+
+```bash
+node scripts/festavia-hue.mjs inspect
+node scripts/festavia-hue.mjs apply candidate.json
+node --test tests/festavia-hue.test.mjs
+node scripts/sync-pink-door-automation-prompts.mjs
+```
+
+`apply` accepts one public-safe candidate object from the ranked poll result. It
+targets only `Festavia permanent 1`, applies 75% brightness, and verifies the
+physical state. Effects must remain active across two delayed readbacks. If an
+effect briefly activates and resets, the helper applies and verifies that
+candidate's static fallback palette before reporting success.
+
+After reviewing prompt changes under `automations/`, run the sync command to
+copy those sources into the two live Codex automation configurations.
+
 ## Discord notification daemon
 
 The daemon reuses the Discord for Codex bot credential and sole allowlisted

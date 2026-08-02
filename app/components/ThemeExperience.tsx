@@ -58,6 +58,10 @@ function paletteBackground(palette: PaletteColor[]): string {
     .join(", ")})`;
 }
 
+function treatmentBackground(palette: PaletteColor[]): string {
+  return palette.length ? paletteBackground(palette) : "var(--ink)";
+}
+
 function formatPacificTime(instant: string | null): string {
   if (!instant) return "the posted closing time";
   const date = new Date(instant);
@@ -193,16 +197,21 @@ function PollResults({
 
 function LightStrand({
   palette,
+  mode,
   effect,
   compact = false,
 }: {
   palette: PaletteColor[];
+  mode: ThemeCandidate["mode"];
   effect: string;
   compact?: boolean;
 }) {
   const colors = palette.length ? palette : fallbackPalette;
+  const hasThemeColors = palette.length > 0;
   const bulbs = Array.from({ length: compact ? 12 : 24 }, (_, index) => {
-    const color = colors[index % colors.length];
+    const color = hasThemeColors
+      ? colors[index % colors.length]
+      : { name: "Hue-native effect colors", hex: "#FFFFFF" };
     return (
       <span
         aria-hidden="true"
@@ -215,14 +224,24 @@ function LightStrand({
 
   return (
     <div
-      className={`light-strand ${compact ? "light-strand-compact" : ""} motion-${effectMotion(effect)}`}
+      className={`light-strand ${compact ? "light-strand-compact" : ""} preview-${mode === "Hue effect" ? "effect" : "gradient"} motion-${effectMotion(effect)}`}
+      style={
+        {
+          "--preview-gradient": hasThemeColors
+            ? paletteBackground(palette)
+            : "none",
+        } as CSSProperties
+      }
       aria-label={
-        effect === "no_effect"
-          ? "Static palette preview"
-          : `Gentle visual interpretation of the ${effect} effect`
+        mode === "Hue effect"
+          ? hasThemeColors
+            ? `Gentle visual interpretation of the ${effect} effect using ${palette[0]?.name} tint`
+            : `Gentle visual interpretation of the Hue-native ${effect} effect; its colors are set by Hue`
+          : `Static gradient preview using ${palette.map((color) => color.name).join(", ")}`
       }
       role="img"
     >
+      <div className="preview-gradient" aria-hidden="true" />
       <div className="strand-wire" />
       <div className="bulb-row">{bulbs}</div>
     </div>
@@ -268,6 +287,7 @@ function ThemeDetails({
     <>
       <LightStrand
         palette={theme.palette}
+        mode={theme.mode}
         effect={theme.effect}
         compact={compact}
       />
@@ -328,16 +348,23 @@ export function ThemeExperience() {
   }, []);
 
   const appliedTheme = useMemo(() => {
-    if (!poll) return themes[0] ?? null;
-    if (poll.phase !== "complete") return null;
+    if (poll?.phase !== "complete") return null;
     return themes.find((theme) => theme.date === poll.date) ?? null;
   }, [poll, themes]);
+  const lastNightTheme = useMemo(
+    () => themes.find((theme) => theme.date !== poll?.date) ?? null,
+    [poll, themes],
+  );
   const archiveThemes = useMemo(
     () =>
       themes
-        .filter((theme) => theme.date !== appliedTheme?.date)
+        .filter(
+          (theme) =>
+            theme.date !== appliedTheme?.date &&
+            theme.date !== lastNightTheme?.date,
+        )
         .slice(0, 6),
-    [appliedTheme, themes],
+    [appliedTheme, lastNightTheme, themes],
   );
 
   async function voteFor(candidateId: string) {
@@ -366,9 +393,12 @@ export function ThemeExperience() {
     poll?.phase === "open"
       ? poll.candidates.flatMap((candidate) => candidate.palette)
       : [];
-  const heroPalette = appliedTheme?.palette ?? votingPalette ?? fallbackPalette;
+  const heroPalette =
+    appliedTheme?.palette ?? (poll?.phase === "open" ? votingPalette : []);
   const heroStyle = {
-    "--hero-palette": paletteBackground(heroPalette),
+    "--hero-palette": appliedTheme
+      ? treatmentBackground(appliedTheme.palette)
+      : paletteBackground(heroPalette),
   } as CSSProperties & { "--hero-palette": string };
 
   return (
@@ -400,7 +430,9 @@ export function ThemeExperience() {
             </div>
           ) : poll?.phase === "open" ? (
             <div className="hero-theme hero-vote-prompt">
-              <p>Two themes are ready. Choose the colors for tonight.</p>
+              <span className="date-label">Tonight&apos;s candidates</span>
+              <h2>Choose the light for tonight</h2>
+              <p>Two verified themes are ready. Your choice sets the evening display.</p>
               <a href="#vote">
                 Vote on tonight&apos;s lights
                 <SquareCheckBig size={18} aria-hidden="true" />
@@ -416,11 +448,20 @@ export function ThemeExperience() {
               <h2>Tonight&apos;s choices arrive at 8 AM</h2>
               <p>Come back soon to help choose the evening display.</p>
             </div>
+          ) : lastNightTheme ? (
+            <div className="hero-theme">
+              <span className="date-label">Last night&apos;s light</span>
+              <h2>{lastNightTheme.observanceName}</h2>
+              <p>Tonight&apos;s choices open at 8 AM Pacific.</p>
+              <a href="#last-night">
+                See last night&apos;s light <Sparkles size={18} aria-hidden="true" />
+              </a>
+            </div>
           ) : (
             <div className="hero-theme">
-              <span className="date-label">Tonight</span>
+              <span className="date-label">Before tonight&apos;s vote</span>
               <h2>The display is settling in</h2>
-              <p>Check back soon for tonight&apos;s observance and colors.</p>
+              <p>Tonight&apos;s choices arrive at 8 AM Pacific.</p>
             </div>
           )}
         </div>
@@ -525,10 +566,11 @@ export function ThemeExperience() {
           <div className="tonight-layout">
             <div
               className="palette-stage"
-              style={{ background: paletteBackground(appliedTheme.palette) }}
+              style={{ background: treatmentBackground(appliedTheme.palette) }}
             >
               <LightStrand
                 palette={appliedTheme.palette}
+                mode={appliedTheme.mode}
                 effect={appliedTheme.effect}
               />
               <span>{formatPacificDate(appliedTheme.date)}</span>
@@ -546,6 +588,30 @@ export function ThemeExperience() {
                   {appliedTheme.substitutionNote}
                 </p>
               ) : null}
+            </div>
+          </div>
+        </section>
+      ) : lastNightTheme ? (
+        <section className="last-night-section tonight-section" id="last-night">
+          <div className="section-heading">
+            <p className="eyebrow">History from the porch</p>
+            <h2>Last night&apos;s light</h2>
+            <p>Tonight&apos;s display has not been chosen yet.</p>
+          </div>
+          <div className="tonight-layout">
+            <div
+              className="palette-stage"
+              style={{ background: treatmentBackground(lastNightTheme.palette) }}
+            >
+              <LightStrand
+                palette={lastNightTheme.palette}
+                mode={lastNightTheme.mode}
+                effect={lastNightTheme.effect}
+              />
+              <span>{formatPacificDate(lastNightTheme.date)}</span>
+            </div>
+            <div className="tonight-story">
+              <ThemeDetails theme={lastNightTheme} />
             </div>
           </div>
         </section>
@@ -577,11 +643,14 @@ export function ThemeExperience() {
           <div className="archive-grid">
             {archiveThemes.map((theme) => (
               <article className="archive-item" key={theme.date}>
-                <div
-                  className="archive-color"
-                  style={{ background: paletteBackground(theme.palette) }}
-                  aria-hidden="true"
-                />
+                <div className="archive-preview">
+                  <LightStrand
+                    palette={theme.palette}
+                    mode={theme.mode}
+                    effect={theme.effect}
+                    compact
+                  />
+                </div>
                 <span>{formatPacificDate(theme.date)}</span>
                 <h3>{theme.observanceName}</h3>
                 <p>{theme.lightingSynopsis}</p>

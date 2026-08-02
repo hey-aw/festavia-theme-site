@@ -319,6 +319,7 @@ h1 {
 }
 
 .light-strand {
+  --preview-gradient: none;
   position: relative;
   min-height: 94px;
   overflow: hidden;
@@ -326,6 +327,36 @@ h1 {
 
 .light-strand-compact {
   min-height: 70px;
+}
+
+.preview-gradient {
+  position: absolute;
+  inset: 5px 0 24px;
+  border-radius: 999px;
+  background: var(--preview-gradient);
+  opacity: 0.52;
+}
+
+.preview-effect .preview-gradient {
+  opacity: 0.34;
+  filter: saturate(0.88);
+}
+
+.preview-effect.motion-glow .preview-gradient {
+  animation: preview-glow 8s ease-in-out infinite;
+}
+
+.preview-effect.motion-drift .preview-gradient {
+  animation: preview-drift 12s ease-in-out infinite;
+}
+
+.preview-effect.motion-shimmer .preview-gradient {
+  animation: preview-shimmer 10s ease-in-out infinite;
+}
+
+.preview-effect:not([style*="linear-gradient"]) .preview-gradient {
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
 .strand-wire {
@@ -358,6 +389,10 @@ h1 {
   background: var(--bulb-color);
   box-shadow: 0 0 16px 2px var(--bulb-color);
   transform-origin: top center;
+}
+
+.preview-effect .light-bulb {
+  opacity: 0.82;
 }
 
 .motion-glow .light-bulb {
@@ -700,6 +735,21 @@ h1 {
   background: var(--ink);
 }
 
+.archive-preview {
+  min-height: 78px;
+  margin-bottom: 28px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.archive-preview .light-strand {
+  min-height: 78px;
+}
+
+.archive-preview .strand-wire {
+  background: rgba(255, 255, 255, 0.72);
+}
+
 .archive-color {
   width: 100%;
   height: 78px;
@@ -769,6 +819,39 @@ footer p {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes preview-glow {
+  0%,
+  100% {
+    opacity: 0.26;
+    transform: scaleX(0.94);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes preview-drift {
+  0%,
+  100% {
+    transform: translateX(-2%);
+  }
+  50% {
+    transform: translateX(2%);
+  }
+}
+
+@keyframes preview-shimmer {
+  0%,
+  100% {
+    opacity: 0.22;
+  }
+  45%,
+  65% {
+    opacity: 0.42;
   }
 }
 
@@ -947,6 +1030,11 @@ footer p {
 
   .archive-item {
     min-height: 250px;
+  }
+
+  .archive-preview,
+  .archive-preview .light-strand {
+    min-height: 70px;
   }
 
   .download-actions {
