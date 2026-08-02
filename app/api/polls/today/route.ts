@@ -28,6 +28,8 @@ export async function GET(request: NextRequest) {
       phase: appliedTheme ? "complete" : "not_scheduled",
       candidates: [],
       yourVote: null,
+      shareUrl: `${request.nextUrl.origin}/share/poll/${date}`,
+      imageUrl: `${request.nextUrl.origin}/api/share/poll/${date}/image`,
     };
     const headers = new Headers({ "Cache-Control": "private, no-store" });
     if (identity.setCookie) headers.set("Set-Cookie", identity.setCookie);
@@ -67,6 +69,8 @@ export async function GET(request: NextRequest) {
       };
     }),
     yourVote,
+    shareUrl: `${request.nextUrl.origin}/share/poll/${date}`,
+    imageUrl: `${request.nextUrl.origin}/api/share/poll/${date}/image`,
   };
   const headers = new Headers({ "Cache-Control": "private, no-store" });
   if (identity.setCookie) headers.set("Set-Cookie", identity.setCookie);

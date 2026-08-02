@@ -70,4 +70,6 @@ export type PublicPoll = {
     }
   >;
   yourVote: string | null;
+  shareUrl?: string;
+  imageUrl?: string;
 };
