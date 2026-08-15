@@ -16,6 +16,8 @@ The helper reads the existing OpenHue bridge configuration, passes the applicati
 
 4. Create exactly two complete candidates that match the public API contract. Give them unique lowercase hyphenated IDs and unique preference ranks 1 and 2. Each candidate must include `id`, `preferenceRank`, `observanceName`, `observanceSynopsis`, `sourceUrl`, `palette`, `mode`, `effect`, `lightingSynopsis`, and `fallbackPalette`.
 
+Both synopsis fields are public copy. `observanceSynopsis` must explain the observance itself and briefly define any identity, community, tradition, food, scientific idea, or other term that a general reader may not know. `lightingSynopsis` must describe only the visible experience in natural language: colors when known, the spatial pattern, the kind of glow or movement, and the connection to the observance. Never mention Hue, Hue-native behavior, APIs, parameters, inputs, verification, capabilities, bridge behavior, resource identifiers, fallback mechanics, or implementation caveats in either synopsis. Do not write defensive disclaimers such as “without claiming” or “when supported.”
+
 Static gradient candidates must use `mode: "Static gradient"`, `effect: "no_effect"`, and 3-5 clearly distinguishable sRGB colors in `palette`.
 
 Dynamic palette candidates must use `mode: "Dynamic palette"`, `effect: "no_effect"`, and 3-5 clearly distinguishable sRGB colors in `palette`. Use this mode only when the fresh inspection reports `dynamicPalette.supported: true`. The project adapter implements it through one reserved scene attached to a validated zone containing only the exact Festavia target, at the helper-reported calm speed. The automation must never create scenes directly or simulate movement with repeated light updates.

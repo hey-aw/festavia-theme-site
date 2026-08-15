@@ -38,6 +38,8 @@ The helper applies only to the uniquely resolved Festavia and verifies ON state,
 
 5. Publish the treatment reported by the helper as verified, or an unavailable state if Hue verification failed. Build a public-safe temporary JSON payload for `PUT /api/admin/themes/:date` containing only the observance name, synopsis, HTTPS source, helper-reported palette, verified mode, verified effect, lighting description, public status, selected candidate ID or null, selected vote count, total vote count, and helper-reported substitution note or null. Never include brightness, helper state details, an address, Hue identifiers, credentials, Discord data, or diagnostics. For a verified custom-tint effect, publish the one tint returned by the helper. For a Hue-native fixed-color effect, publish an empty palette. For a fallback, publish the actual palette and mode returned by the helper. Run:
 
+Keep every public synopsis in natural audience-facing language. Preserve the candidate's plain-language observance explanation and describe the applied lighting only as a visitor would see it: color when known, glow, twinkle, flow, shimmer, or gentle movement. Never add Hue, API, parameter, input, verification, capability, bridge, identifier, status, or fallback jargon to public text.
+
 `node scripts/pink-door-publisher.mjs theme <YYYY-MM-DD> <payload-path>`
 
 The helper retries once. Delete the temporary payload afterward. Keep site publication failure separate from Hue application and verification status.

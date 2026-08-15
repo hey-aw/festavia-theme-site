@@ -30,6 +30,56 @@ const fallbackPalette: PaletteColor[] = [
   { name: "Evening cyan", hex: "#57D7E8" },
 ];
 
+const effectPreviewPalettes: Partial<Record<ThemeCandidate["effect"], PaletteColor[]>> = {
+  candle: [
+    { name: "Warm amber", hex: "#F6B64A" },
+    { name: "Soft gold", hex: "#FFD978" },
+  ],
+  fire: [
+    { name: "Ember", hex: "#E94B35" },
+    { name: "Flame", hex: "#FFB000" },
+  ],
+  prism: [
+    { name: "Rose", hex: "#F52975" },
+    { name: "Gold", hex: "#FFD447" },
+    { name: "Green", hex: "#8ED647" },
+    { name: "Cyan", hex: "#57D7E8" },
+    { name: "Violet", hex: "#8B6DE9" },
+  ],
+  sparkle: [
+    { name: "Soft white", hex: "#FFF8E8" },
+    { name: "Bright gold", hex: "#FFD86B" },
+  ],
+  opal: [
+    { name: "Pearl", hex: "#FFF7F2" },
+    { name: "Sea glass", hex: "#9DE4D8" },
+    { name: "Blush", hex: "#F5B8D0" },
+  ],
+  glisten: [
+    { name: "Silver", hex: "#E8EDF2" },
+    { name: "Warm white", hex: "#FFF1CC" },
+  ],
+  underwater: [
+    { name: "Aqua", hex: "#38C6D9" },
+    { name: "Ocean blue", hex: "#2674D9" },
+    { name: "Sea green", hex: "#49C79E" },
+  ],
+  cosmos: [
+    { name: "Deep blue", hex: "#314A9B" },
+    { name: "Violet", hex: "#7356B8" },
+    { name: "Starlight", hex: "#FFF0B8" },
+  ],
+  sunbeam: [
+    { name: "Sun gold", hex: "#FFD45A" },
+    { name: "Warm cream", hex: "#FFF0C2" },
+  ],
+  enchant: [
+    { name: "Magenta", hex: "#E946A3" },
+    { name: "Violet", hex: "#805AD5" },
+    { name: "Cyan", hex: "#45C9D8" },
+  ],
+};
+
 async function fetchSiteData(): Promise<{
   themes: AppliedTheme[];
   poll: PublicPoll;
@@ -82,6 +132,10 @@ function treatmentName(theme: Pick<ThemeCandidate, "mode" | "effect">): string {
     .split("_")
     .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
     .join(" ");
+}
+
+function visibleLightingSynopsis(value: string): string {
+  return value.replace(/\bHue-native\s+/gi, "").replace(/\bHue\s+/gi, "");
 }
 
 function PollResults({
@@ -206,7 +260,11 @@ function LightStrand({
   effect: string;
   compact?: boolean;
 }) {
-  const colors = palette.length ? palette : fallbackPalette;
+  const colors =
+    palette.length > 0
+      ? palette
+      : effectPreviewPalettes[effect as ThemeCandidate["effect"]] ??
+        fallbackPalette;
   const bulbs = Array.from({ length: compact ? 12 : 24 }, (_, index) => {
     const color = colors[index % colors.length];
     return (
@@ -292,7 +350,9 @@ function ThemeDetails({
         <Sparkles size={17} aria-hidden="true" />
         <span>{treatmentName(theme)}</span>
       </div>
-      <p className="lighting-note">{theme.lightingSynopsis}</p>
+      <p className="lighting-note">
+        {visibleLightingSynopsis(theme.lightingSynopsis)}
+      </p>
     </>
   );
 }
@@ -632,14 +692,21 @@ export function ThemeExperience() {
           <div className="archive-grid">
             {archiveThemes.map((theme) => (
               <article className="archive-item" key={theme.date}>
-                <div
-                  className="archive-color"
-                  style={{ background: paletteBackground(theme.palette) }}
-                  aria-hidden="true"
-                />
+                <div className="archive-preview">
+                  <LightStrand
+                    palette={theme.palette}
+                    mode={theme.mode}
+                    effect={theme.effect}
+                    compact
+                  />
+                  <span className="archive-treatment">
+                    <Sparkles size={15} aria-hidden="true" />
+                    {treatmentName(theme)}
+                  </span>
+                </div>
                 <span>{formatPacificDate(theme.date)}</span>
                 <h3>{theme.observanceName}</h3>
-                <p>{theme.lightingSynopsis}</p>
+                <p>{visibleLightingSynopsis(theme.lightingSynopsis)}</p>
               </article>
             ))}
           </div>

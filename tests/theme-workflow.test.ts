@@ -191,6 +191,14 @@ test("candidate validation rejects unsupported effects and unsafe URLs", () => {
       }),
     /Non-effect themes must use no_effect/,
   );
+  assert.throws(
+    () =>
+      validateCandidate({
+        ...baseCandidate,
+        lightingSynopsis: "A Hue-native effect supplies verified color input.",
+      }),
+    /natural, user-facing language/,
+  );
 });
 
 test("applied themes validate vote counts and public status", () => {

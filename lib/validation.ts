@@ -9,6 +9,8 @@ import { isIsoDate, pacificInstant } from "./pacific-time";
 
 const HEX_COLOR = /^#[0-9A-F]{6}$/;
 const CANDIDATE_ID = /^[a-z0-9][a-z0-9-]{2,63}$/;
+const PUBLIC_LIGHTING_JARGON =
+  /\b(?:Hue(?:-native)?|effects?_v2|CIE|mirek|gamut|color input|resource identifiers?)\b/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -62,6 +64,19 @@ function sourceUrlField(value: unknown): string {
   return sourceUrl;
 }
 
+function publicCopyField(
+  value: unknown,
+  label: string,
+  min: number,
+  max: number,
+): string {
+  const copy = stringField(value, label, min, max);
+  if (PUBLIC_LIGHTING_JARGON.test(copy)) {
+    throw new Error(`${label} must use natural, user-facing language.`);
+  }
+  return copy;
+}
+
 export function validateCandidate(value: unknown): ThemeCandidate {
   if (!isRecord(value)) throw new Error("Candidate must be an object.");
   const id = stringField(value.id, "id", 3, 64);
@@ -100,7 +115,7 @@ export function validateCandidate(value: unknown): ThemeCandidate {
       2,
       100,
     ),
-    observanceSynopsis: stringField(
+    observanceSynopsis: publicCopyField(
       value.observanceSynopsis,
       "observanceSynopsis",
       20,
@@ -110,7 +125,7 @@ export function validateCandidate(value: unknown): ThemeCandidate {
     palette,
     mode: mode as ThemeCandidate["mode"],
     effect: effect as ThemeCandidate["effect"],
-    lightingSynopsis: stringField(
+    lightingSynopsis: publicCopyField(
       value.lightingSynopsis,
       "lightingSynopsis",
       10,
@@ -213,7 +228,7 @@ export function validateThemePayload(value: unknown, date: string): AppliedTheme
       2,
       100,
     ),
-    observanceSynopsis: stringField(
+    observanceSynopsis: publicCopyField(
       value.observanceSynopsis,
       "observanceSynopsis",
       20,
@@ -223,7 +238,7 @@ export function validateThemePayload(value: unknown, date: string): AppliedTheme
     palette,
     mode: mode as AppliedTheme["mode"],
     effect: effect as AppliedTheme["effect"],
-    lightingSynopsis: stringField(
+    lightingSynopsis: publicCopyField(
       value.lightingSynopsis,
       "lightingSynopsis",
       10,
