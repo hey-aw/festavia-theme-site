@@ -44,7 +44,8 @@ async function fetchSiteData(): Promise<{
   return { themes: themeData.themes, poll: pollData };
 }
 
-function effectMotion(effect: string): string {
+function effectMotion(mode: ThemeCandidate["mode"], effect: string): string {
+  if (mode === "Dynamic palette") return "drift";
   if (["candle", "fire", "sunbeam"].includes(effect)) return "glow";
   if (["underwater", "cosmos"].includes(effect)) return "drift";
   if (effect !== "no_effect") return "shimmer";
@@ -75,9 +76,8 @@ function formatPacificTime(instant: string | null): string {
 }
 
 function treatmentName(theme: Pick<ThemeCandidate, "mode" | "effect">): string {
-  if (theme.mode !== "Hue effect" || theme.effect === "no_effect") {
-    return "Gradient";
-  }
+  if (theme.mode === "Dynamic palette") return "Dynamic palette";
+  if (theme.mode !== "Hue effect" || theme.effect === "no_effect") return "Gradient";
   return theme.effect
     .split("_")
     .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
@@ -197,10 +197,12 @@ function PollResults({
 
 function LightStrand({
   palette,
+  mode,
   effect,
   compact = false,
 }: {
   palette: PaletteColor[];
+  mode: ThemeCandidate["mode"];
   effect: string;
   compact?: boolean;
 }) {
@@ -219,9 +221,11 @@ function LightStrand({
 
   return (
     <div
-      className={`light-strand ${compact ? "light-strand-compact" : ""} motion-${effectMotion(effect)}`}
+      className={`light-strand ${compact ? "light-strand-compact" : ""} motion-${effectMotion(mode, effect)}`}
       aria-label={
-        effect === "no_effect"
+        mode === "Dynamic palette"
+          ? "Gentle dynamic palette preview"
+          : effect === "no_effect"
           ? "Static palette preview"
           : `Gentle visual interpretation of the ${effect} effect`
       }
@@ -272,6 +276,7 @@ function ThemeDetails({
     <>
       <LightStrand
         palette={theme.palette}
+        mode={theme.mode}
         effect={theme.effect}
         compact={compact}
       />
@@ -554,6 +559,7 @@ export function ThemeExperience() {
             >
               <LightStrand
                 palette={appliedTheme.palette}
+                mode={appliedTheme.mode}
                 effect={appliedTheme.effect}
               />
               <span>{formatPacificDate(appliedTheme.date)}</span>
@@ -588,6 +594,7 @@ export function ThemeExperience() {
             >
               <LightStrand
                 palette={lastNightTheme.palette}
+                mode={lastNightTheme.mode}
                 effect={lastNightTheme.effect}
               />
               <span>{formatPacificDate(lastNightTheme.date)}</span>

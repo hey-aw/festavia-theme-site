@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  buildDynamicScenePayload,
   buildEffectPayload,
   buildStaticGradientPayload,
   createCurlRequester,
   createFestaviaController,
   FESTAVIA_COLOR_EFFECTS,
+  FESTAVIA_DYNAMIC_SCENE_NAME,
+  FESTAVIA_DYNAMIC_SPEED,
   hexToGamutXy,
   parseOpenHueConfig,
 } from "../scripts/festavia-hue-lib.mjs";
@@ -37,6 +40,8 @@ function light({
   effectParameters = null,
   points = [],
   brightness = 75.1,
+  dynamicStatus = "none",
+  dynamicSupported = true,
 } = {}) {
   return {
     id: "private-light-id",
@@ -61,7 +66,46 @@ function light({
       },
     },
     timed_effects: { status: "no_effect" },
-    dynamics: { status: "none" },
+    dynamics: {
+      status: dynamicStatus,
+      status_values: dynamicSupported
+        ? ["none", "dynamic_palette"]
+        : ["none"],
+    },
+  };
+}
+
+function dynamicZone() {
+  return {
+    id: "private-zone-id",
+    metadata: { name: "Pink Door Festavia" },
+    children: [{ rid: "private-light-id", rtype: "light" }],
+  };
+}
+
+function dynamicScene({ active = "inactive" } = {}) {
+  const xyColors = fallbackPalette.map((color) =>
+    hexToGamutXy(color.hex, gamut),
+  );
+  return {
+    id: "private-scene-id",
+    metadata: { name: FESTAVIA_DYNAMIC_SCENE_NAME },
+    group: { rid: "private-zone-id", rtype: "zone" },
+    actions: [
+      {
+        target: { rid: "private-light-id", rtype: "light" },
+        action: {
+          gradient: {
+            points: xyColors.map((xy) => ({ color: { xy } })),
+          },
+        },
+      },
+    ],
+    palette: {
+      color: xyColors.map((xy) => ({ color: { xy } })),
+    },
+    speed: FESTAVIA_DYNAMIC_SPEED,
+    status: { active },
   };
 }
 
@@ -125,6 +169,25 @@ test("static payload converts and gamut-clips all palette colors", () => {
   });
 });
 
+test("dynamic scene payload isolates the light and uses a calm palette speed", () => {
+  const payload = buildDynamicScenePayload(
+    fallbackPalette,
+    gamut,
+    "private-light-id",
+    "private-zone-id",
+  );
+  assert.equal(payload.actions.length, 1);
+  assert.deepEqual(payload.actions[0].target, {
+    rid: "private-light-id",
+    rtype: "light",
+  });
+  assert.equal(payload.actions[0].action.gradient.points.length, 3);
+  assert.equal(payload.palette.color.length, 3);
+  assert.equal(payload.speed, FESTAVIA_DYNAMIC_SPEED);
+  assert.equal(payload.auto_dynamic, false);
+  assert.equal(payload.effects_v2, undefined);
+});
+
 test("sunbeam tint is written through effects_v2 action parameters", () => {
   assert.deepEqual(FESTAVIA_COLOR_EFFECTS, ["sunbeam"]);
   const tint = { name: "Summer yellow", hex: "#F6D64A" };
@@ -165,7 +228,7 @@ test("effect application requires two persistent matching readbacks", async () =
   assert.equal("dynamics" in puts[0].body, false);
 });
 
-test("effect that resets is replaced by the candidate static fallback", async () => {
+test("effect falls back to static only when dynamic palettes are unavailable", async () => {
   const puts = [];
   let getCount = 0;
   const controller = createFestaviaController({
@@ -176,11 +239,17 @@ test("effect that resets is replaced by the candidate static fallback", async ()
         return response({});
       }
       getCount += 1;
-      if (getCount === 1) return response(light());
-      if (getCount === 2) return response(light({ effect: "candle" }));
-      if (getCount === 3) return response(light({ effect: "no_effect" }));
+      if (getCount === 1) return response(light({ dynamicSupported: false }));
+      if (getCount === 2) {
+        return response(light({ effect: "candle", dynamicSupported: false }));
+      }
+      if (getCount === 3) {
+        return response(light({ effect: "no_effect", dynamicSupported: false }));
+      }
       const points = fallbackPalette.map(() => ({ color: { xy: {} } }));
-      return response(light({ effect: "no_effect", points }));
+      return response(
+        light({ effect: "no_effect", points, dynamicSupported: false }),
+      );
     },
   });
 
@@ -188,10 +257,107 @@ test("effect that resets is replaced by the candidate static fallback", async ()
   assert.equal(result.mode, "Static gradient");
   assert.equal(result.effect, "no_effect");
   assert.equal(result.fallbackUsed, true);
-  assert.match(result.substitutionNote, /did not remain active/);
+  assert.match(result.substitutionNote, /dynamic palette fallback was unavailable/);
   assert.equal(puts.length, 2);
   assert.equal(puts[1].body.effects_v2.action.effect, "no_effect");
   assert.equal(puts[1].body.gradient.points.length, fallbackPalette.length);
+});
+
+test("effect that resets uses the candidate dynamic palette fallback", async () => {
+  const calls = [];
+  let lightRead = 0;
+  const controller = createFestaviaController({
+    sleep: async () => {},
+    request: async (method, path, body) => {
+      calls.push({ method, path, body });
+      if (path === "/clip/v2/resource/light" && method === "GET") {
+        lightRead += 1;
+        if (lightRead === 1) return response(light());
+        if (lightRead === 2) return response(light({ effect: "candle" }));
+        if (lightRead === 3) return response(light());
+        if (lightRead === 4) return response(light());
+        return response(light({ dynamicStatus: "dynamic_palette" }));
+      }
+      if (path === "/clip/v2/resource/zone" && method === "GET") {
+        return response(dynamicZone());
+      }
+      if (path === "/clip/v2/resource/scene" && method === "GET") {
+        return response(dynamicScene());
+      }
+      if (path === "/clip/v2/resource/scene/private-scene-id" && method === "GET") {
+        return response(dynamicScene({ active: "dynamic_palette" }));
+      }
+      return response({});
+    },
+  });
+
+  const result = await controller.apply(effectCandidate);
+  assert.equal(result.mode, "Dynamic palette");
+  assert.equal(result.effect, "no_effect");
+  assert.equal(result.fallbackUsed, true);
+  assert.match(result.substitutionNote, /dynamic palette fallback/);
+  assert.ok(
+    calls.some(
+      (call) =>
+        call.method === "PUT" &&
+        call.body?.recall?.action === "dynamic_palette",
+    ),
+  );
+});
+
+test("dynamic palette application updates and recalls the isolated scene", async () => {
+  const calls = [];
+  let lightRead = 0;
+  const controller = createFestaviaController({
+    sleep: async () => {},
+    request: async (method, path, body) => {
+      calls.push({ method, path, body });
+      if (path === "/clip/v2/resource/light" && method === "GET") {
+        lightRead += 1;
+        return response(
+          light({
+            dynamicStatus: lightRead === 1 ? "none" : "dynamic_palette",
+          }),
+        );
+      }
+      if (path === "/clip/v2/resource/zone" && method === "GET") {
+        return response(dynamicZone());
+      }
+      if (path === "/clip/v2/resource/scene" && method === "GET") {
+        return response(dynamicScene());
+      }
+      if (path === "/clip/v2/resource/scene/private-scene-id" && method === "GET") {
+        return response(dynamicScene({ active: "dynamic_palette" }));
+      }
+      return response({});
+    },
+  });
+
+  const result = await controller.apply({
+    ...effectCandidate,
+    id: "creme-brulee-drift",
+    mode: "Dynamic palette",
+    effect: "no_effect",
+    palette: fallbackPalette,
+  });
+  assert.equal(result.mode, "Dynamic palette");
+  assert.equal(result.fallbackUsed, false);
+  const sceneUpdate = calls.find(
+    (call) =>
+      call.method === "PUT" &&
+      call.path === "/clip/v2/resource/scene/private-scene-id" &&
+      Array.isArray(call.body?.actions),
+  );
+  assert.equal(sceneUpdate.body.actions[0].target.rid, "private-light-id");
+  assert.equal(sceneUpdate.body.palette.color.length, fallbackPalette.length);
+  assert.equal(sceneUpdate.body.speed, FESTAVIA_DYNAMIC_SPEED);
+  assert.ok(
+    calls.some(
+      (call) =>
+        call.method === "PUT" &&
+        call.body?.recall?.action === "dynamic_palette",
+    ),
+  );
 });
 
 test("tinted sunbeam verifies status parameters and returns its tint", async () => {
@@ -248,12 +414,68 @@ test("inspect reads active parameters from effects_v2 status", async () => {
 
   const result = await controller.inspect();
   assert.deepEqual(result.effectColorValues, ["sunbeam"]);
+  assert.deepEqual(result.dynamicPalette, {
+    supported: true,
+    statusValues: ["none", "dynamic_palette"],
+    paletteColorLimit: 9,
+    speed: FESTAVIA_DYNAMIC_SPEED,
+  });
   assert.deepEqual(result.effectStatusParameters, {
     color: { xy: { x: 0.4323, y: 0.4495 } },
     colorTemperature: { mirek: 153, mirekValid: false },
     speed: 0.5,
   });
   assert.equal("effectParameters" in result, false);
+});
+
+test("an unsafe reserved zone is never used for dynamic scene recall", async () => {
+  const calls = [];
+  let lightRead = 0;
+  const controller = createFestaviaController({
+    sleep: async () => {},
+    request: async (method, path, body) => {
+      calls.push({ method, path, body });
+      if (path === "/clip/v2/resource/light" && method === "GET") {
+        lightRead += 1;
+        const points =
+          lightRead >= 3
+            ? fallbackPalette.map(() => ({ color: { xy: {} } }))
+            : [];
+        return response(light({ points }));
+      }
+      if (path === "/clip/v2/resource/zone" && method === "GET") {
+        return response({
+          ...dynamicZone(),
+          children: [
+            ...dynamicZone().children,
+            { rid: "another-light-id", rtype: "light" },
+          ],
+        });
+      }
+      return response({});
+    },
+  });
+
+  const result = await controller.apply({
+    ...effectCandidate,
+    id: "creme-brulee-drift",
+    mode: "Dynamic palette",
+    effect: "no_effect",
+    palette: fallbackPalette,
+  });
+  assert.equal(result.mode, "Static gradient");
+  assert.equal(result.fallbackUsed, true);
+  assert.equal(
+    calls.some((call) => call.path.includes("/scene")),
+    false,
+  );
+  assert.equal(
+    calls.filter(
+      (call) =>
+        call.method === "PUT" && call.path.includes("/resource/light/"),
+    ).length,
+    1,
+  );
 });
 
 test("tints are rejected for effects without verified color support", async () => {
@@ -339,10 +561,13 @@ test("automation prompts invoke the skill through the project adapter", async ()
   }
   assert.match(candidatePrompt, /This is a read-only lighting run/);
   assert.match(candidatePrompt, /effectColorValues/);
+  assert.match(candidatePrompt, /Dynamic palette/);
+  assert.match(candidatePrompt, /dynamicPalette/);
   assert.match(candidatePrompt, /effects_v2\.status\.parameters/);
   assert.match(
     observancePrompt,
     /node scripts\/festavia-hue\.mjs apply <candidate-path>/,
   );
   assert.match(observancePrompt, /two readbacks 30 seconds apart/);
+  assert.match(observancePrompt, /Dynamic palette/);
 });

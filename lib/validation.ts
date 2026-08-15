@@ -86,7 +86,7 @@ export function validateCandidate(value: unknown): ThemeCandidate {
       : paletteField(value.palette, "palette", 3, 5);
   const fallbackPalette = paletteField(value.fallbackPalette, "fallbackPalette", 3, 5);
   if (mode !== "Hue effect" && effect !== "no_effect") {
-    throw new Error("Static themes must use no_effect.");
+    throw new Error("Non-effect themes must use no_effect.");
   }
   if (mode === "Hue effect" && effect === "no_effect") {
     throw new Error("Hue effect themes must select an effect.");
@@ -174,7 +174,7 @@ export function validateThemePayload(value: unknown, date: string): AppliedTheme
     throw new Error("Unsupported effect.");
   }
   if (mode !== "Hue effect" && effect !== "no_effect") {
-    throw new Error("Static themes must use no_effect.");
+    throw new Error("Non-effect themes must use no_effect.");
   }
   if (mode === "Hue effect" && effect === "no_effect") {
     throw new Error("Hue effect themes must select an effect.");

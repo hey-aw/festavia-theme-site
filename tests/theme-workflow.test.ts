@@ -173,6 +173,24 @@ test("candidate validation rejects unsupported effects and unsafe URLs", () => {
       }),
     /0-1 colors/,
   );
+  assert.equal(
+    validateCandidate({
+      ...baseCandidate,
+      id: "world-snake-drift",
+      mode: "Dynamic palette",
+    }).mode,
+    "Dynamic palette",
+  );
+  assert.throws(
+    () =>
+      validateCandidate({
+        ...baseCandidate,
+        id: "world-snake-drift",
+        mode: "Dynamic palette",
+        effect: "prism",
+      }),
+    /Non-effect themes must use no_effect/,
+  );
 });
 
 test("applied themes validate vote counts and public status", () => {

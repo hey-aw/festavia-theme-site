@@ -32,7 +32,12 @@ export const themeCandidates = sqliteTable(
     sourceUrl: text("source_url").notNull(),
     paletteJson: text("palette_json").notNull(),
     mode: text("mode", {
-      enum: ["Static gradient", "Hue effect", "Static catalog fallback"],
+      enum: [
+        "Static gradient",
+        "Dynamic palette",
+        "Hue effect",
+        "Static catalog fallback",
+      ],
     }).notNull(),
     effect: text("effect").notNull(),
     lightingSynopsis: text("lighting_synopsis").notNull(),
@@ -126,7 +131,12 @@ export const themes = sqliteTable(
     sourceUrl: text("source_url").notNull(),
     paletteJson: text("palette_json").notNull(),
     mode: text("mode", {
-      enum: ["Static gradient", "Hue effect", "Static catalog fallback"],
+      enum: [
+        "Static gradient",
+        "Dynamic palette",
+        "Hue effect",
+        "Static catalog fallback",
+      ],
     }).notNull(),
     effect: text("effect").notNull(),
     lightingSynopsis: text("lighting_synopsis").notNull(),

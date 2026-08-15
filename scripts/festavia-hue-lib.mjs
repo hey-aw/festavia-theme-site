@@ -4,8 +4,12 @@ export const FESTAVIA_LIGHT_NAME = "Festavia permanent 1";
 export const FESTAVIA_BRIGHTNESS = 75;
 export const FESTAVIA_TRANSITION_MS = 3000;
 export const FESTAVIA_COLOR_EFFECTS = Object.freeze(["sunbeam"]);
+export const FESTAVIA_DYNAMIC_ZONE_NAME = "Pink Door Festavia";
+export const FESTAVIA_DYNAMIC_SCENE_NAME = "Pink Door Daily Dynamic";
+export const FESTAVIA_DYNAMIC_SPEED = 0.2;
 
 const STATIC_MODES = new Set(["Static gradient", "Static catalog fallback"]);
+const DYNAMIC_MODE = "Dynamic palette";
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 const CANDIDATE_FIELDS = new Set([
   "id",
@@ -297,6 +301,40 @@ export function buildEffectPayload(effect, tint = null, gamut = null) {
   };
 }
 
+export function buildDynamicScenePayload(palette, gamut, targetId, zoneId) {
+  const colors = validatePalette(palette, "palette");
+  const xyColors = colors.map((color) => hexToGamutXy(color.hex, gamut));
+  return {
+    actions: [
+      {
+        target: { rid: targetId, rtype: "light" },
+        action: {
+          on: { on: true },
+          dimming: { brightness: FESTAVIA_BRIGHTNESS },
+          gradient: {
+            mode: "interpolated_palette",
+            points: xyColors.map((xy) => ({ color: { xy } })),
+          },
+          effects_v2: { action: { effect: "no_effect" } },
+        },
+      },
+    ],
+    palette: {
+      color: xyColors.map((xy) => ({
+        color: { xy },
+        dimming: { brightness: FESTAVIA_BRIGHTNESS },
+      })),
+      dimming: [{ brightness: FESTAVIA_BRIGHTNESS }],
+      color_temperature: [],
+      effects_v2: [],
+    },
+    speed: FESTAVIA_DYNAMIC_SPEED,
+    auto_dynamic: false,
+    metadata: { name: FESTAVIA_DYNAMIC_SCENE_NAME },
+    group: { rid: zoneId, rtype: "zone" },
+  };
+}
+
 function effectStatus(light) {
   const modern = light.effects_v2?.status;
   if (typeof modern === "string") return modern;
@@ -367,14 +405,17 @@ function xyMatches(actual, expected) {
   );
 }
 
-function commonStateMatches(light) {
+function baseStateMatches(light) {
   return (
     light.on?.on === true &&
     typeof light.dimming?.brightness === "number" &&
     Math.abs(light.dimming.brightness - FESTAVIA_BRIGHTNESS) <= 1 &&
-    timedEffectStatus(light) === "no_effect" &&
-    light.dynamics?.status === "none"
+    timedEffectStatus(light) === "no_effect"
   );
+}
+
+function commonStateMatches(light) {
+  return baseStateMatches(light) && light.dynamics?.status === "none";
 }
 
 function effectStateMatches(light, effect, expectedTint = null) {
@@ -392,6 +433,23 @@ function staticStateMatches(light, expectedPointCount) {
     light.gradient?.mode === "interpolated_palette" &&
     Array.isArray(light.gradient?.points) &&
     light.gradient.points.length === expectedPointCount
+  );
+}
+
+function dynamicStateMatches(light) {
+  return (
+    baseStateMatches(light) &&
+    effectStatus(light) === "no_effect" &&
+    light.dynamics?.status === "dynamic_palette"
+  );
+}
+
+function dynamicPaletteSupported(light) {
+  return (
+    Array.isArray(light.dynamics?.status_values) &&
+    light.dynamics.status_values.includes("dynamic_palette") &&
+    typeof light.gradient?.points_capable === "number" &&
+    light.gradient.points_capable >= 3
   );
 }
 
@@ -445,6 +503,53 @@ function validateCandidate(value) {
   return candidate;
 }
 
+function findNamedResource(response, name, label) {
+  const matches = response.data.filter(
+    (resource) => resource.metadata?.name === name,
+  );
+  if (matches.length > 1) {
+    throw new Error(`${label} did not resolve uniquely.`);
+  }
+  return matches[0] ?? null;
+}
+
+function zoneTargetsOnlyLight(zone, lightId) {
+  return (
+    Array.isArray(zone.children) &&
+    zone.children.length === 1 &&
+    zone.children[0]?.rtype === "light" &&
+    zone.children[0]?.rid === lightId
+  );
+}
+
+function sceneTargetsOnlyLight(scene, lightId, zoneId) {
+  return (
+    scene.group?.rtype === "zone" &&
+    scene.group?.rid === zoneId &&
+    Array.isArray(scene.actions) &&
+    scene.actions.length > 0 &&
+    scene.actions.every(
+      (entry) =>
+        entry.target?.rtype === "light" && entry.target?.rid === lightId,
+    )
+  );
+}
+
+function dynamicSceneDefinitionMatches(scene, expected, lightId, zoneId) {
+  const actualColors = scene.palette?.color;
+  const expectedColors = expected.palette.color;
+  return (
+    sceneTargetsOnlyLight(scene, lightId, zoneId) &&
+    typeof scene.speed === "number" &&
+    Math.abs(scene.speed - expected.speed) <= 0.001 &&
+    Array.isArray(actualColors) &&
+    actualColors.length === expectedColors.length &&
+    actualColors.every((entry, index) =>
+      xyMatches(entry.color?.xy, expectedColors[index].color.xy),
+    )
+  );
+}
+
 export function createFestaviaController({
   request,
   sleep = (milliseconds) =>
@@ -458,6 +563,84 @@ export function createFestaviaController({
 
   async function putTarget(target, body) {
     await request("PUT", `/clip/v2/resource/light/${target.id}`, body);
+  }
+
+  async function ensureDynamicZone(target) {
+    let zone = findNamedResource(
+      await request("GET", "/clip/v2/resource/zone"),
+      FESTAVIA_DYNAMIC_ZONE_NAME,
+      "Festavia dynamic zone",
+    );
+    if (!zone) {
+      await request("POST", "/clip/v2/resource/zone", {
+        children: [{ rid: target.id, rtype: "light" }],
+        metadata: { name: FESTAVIA_DYNAMIC_ZONE_NAME, archetype: "porch" },
+      });
+      zone = findNamedResource(
+        await request("GET", "/clip/v2/resource/zone"),
+        FESTAVIA_DYNAMIC_ZONE_NAME,
+        "Festavia dynamic zone",
+      );
+    }
+    if (!zone || !zoneTargetsOnlyLight(zone, target.id)) {
+      throw new Error("Festavia dynamic zone is not isolated to the target light.");
+    }
+    return zone;
+  }
+
+  async function ensureDynamicScene(target, zone, palette) {
+    let scene = findNamedResource(
+      await request("GET", "/clip/v2/resource/scene"),
+      FESTAVIA_DYNAMIC_SCENE_NAME,
+      "Festavia dynamic scene",
+    );
+    const createPayload = buildDynamicScenePayload(
+      palette,
+      target.color?.gamut,
+      target.id,
+      zone.id,
+    );
+    if (!scene) {
+      await request("POST", "/clip/v2/resource/scene", createPayload);
+      scene = findNamedResource(
+        await request("GET", "/clip/v2/resource/scene"),
+        FESTAVIA_DYNAMIC_SCENE_NAME,
+        "Festavia dynamic scene",
+      );
+    } else {
+      if (!sceneTargetsOnlyLight(scene, target.id, zone.id)) {
+        throw new Error("Festavia dynamic scene is not isolated to the target light.");
+      }
+      const updatePayload = {
+        actions: createPayload.actions,
+        palette: createPayload.palette,
+        speed: createPayload.speed,
+        auto_dynamic: createPayload.auto_dynamic,
+      };
+      await request(
+        "PUT",
+        `/clip/v2/resource/scene/${scene.id}`,
+        updatePayload,
+      );
+    }
+    if (!scene || !sceneTargetsOnlyLight(scene, target.id, zone.id)) {
+      throw new Error("Festavia dynamic scene could not be verified as isolated.");
+    }
+    const storedScene = (
+      await request("GET", `/clip/v2/resource/scene/${scene.id}`)
+    ).data[0];
+    if (
+      !storedScene ||
+      !dynamicSceneDefinitionMatches(
+        storedScene,
+        createPayload,
+        target.id,
+        zone.id,
+      )
+    ) {
+      throw new Error("Festavia dynamic scene definition could not be verified.");
+    }
+    return storedScene;
   }
 
   async function applyStatic(candidate, target, palette, fallbackReason = null) {
@@ -484,6 +667,59 @@ export function createFestaviaController({
       fallbackUsed: Boolean(fallbackReason),
       substitutionNote: fallbackReason,
       state: publicState(verified),
+    };
+  }
+
+  async function applyDynamic(candidate, target, palette, fallbackReason = null) {
+    if (!dynamicPaletteSupported(target)) {
+      throw new Error("Festavia does not currently report dynamic palette support.");
+    }
+    if (timedEffectStatus(target) !== "no_effect") {
+      throw new Error("Festavia has another active timed treatment.");
+    }
+    const normalizedPalette = validatePalette(palette, "palette");
+    const zone = await ensureDynamicZone(target);
+    const scene = await ensureDynamicScene(target, zone, normalizedPalette);
+    await request("PUT", `/clip/v2/resource/scene/${scene.id}`, {
+      recall: {
+        action: "dynamic_palette",
+        duration: FESTAVIA_TRANSITION_MS,
+      },
+    });
+    await sleep(transitionWaitMs);
+    const firstRead = await inspectTarget();
+    const firstScene = (
+      await request("GET", `/clip/v2/resource/scene/${scene.id}`)
+    ).data[0];
+    if (
+      !dynamicStateMatches(firstRead) ||
+      firstScene?.status?.active !== "dynamic_palette"
+    ) {
+      throw new Error("Dynamic Festavia treatment could not be verified.");
+    }
+    await sleep(persistenceWaitMs);
+    const persistentRead = await inspectTarget();
+    const persistentScene = (
+      await request("GET", `/clip/v2/resource/scene/${scene.id}`)
+    ).data[0];
+    if (
+      !dynamicStateMatches(persistentRead) ||
+      persistentScene?.status?.active !== "dynamic_palette"
+    ) {
+      throw new Error("Dynamic Festavia treatment did not remain active.");
+    }
+    return {
+      operation: "apply",
+      ok: true,
+      candidateId: candidate.id,
+      observanceName: candidate.observanceName,
+      mode: DYNAMIC_MODE,
+      effect: "no_effect",
+      palette: normalizedPalette,
+      brightness: persistentRead.dimming.brightness,
+      fallbackUsed: Boolean(fallbackReason),
+      substitutionNote: fallbackReason,
+      state: publicState(persistentRead),
     };
   }
 
@@ -543,12 +779,23 @@ export function createFestaviaController({
       };
     } catch {
       const current = await inspectTarget();
-      return applyStatic(
-        candidate,
-        current,
-        fallbackPalette,
-        `${candidate.effect} did not remain active; applied the candidate's static fallback.`,
-      );
+      const dynamicReason = `${candidate.effect} did not remain active; applied the candidate's dynamic palette fallback.`;
+      try {
+        return await applyDynamic(
+          candidate,
+          current,
+          fallbackPalette,
+          dynamicReason,
+        );
+      } catch {
+        const latest = await inspectTarget();
+        return applyStatic(
+          candidate,
+          latest,
+          fallbackPalette,
+          `${candidate.effect} did not remain active and the dynamic palette fallback was unavailable; applied a static gradient.`,
+        );
+      }
     }
   }
 
@@ -566,6 +813,12 @@ export function createFestaviaController({
           pixelCount: target.gradient?.pixel_count ?? null,
           modeValues: target.gradient?.mode_values ?? [],
         },
+        dynamicPalette: {
+          supported: dynamicPaletteSupported(target),
+          statusValues: target.dynamics?.status_values ?? [],
+          paletteColorLimit: 9,
+          speed: FESTAVIA_DYNAMIC_SPEED,
+        },
         effectValues: effectValues(target),
         effectColorValues: effectColorValues(target),
         effectStatusParameters: publicEffectStatusParameters(target),
@@ -577,6 +830,22 @@ export function createFestaviaController({
       const target = await inspectTarget();
       if (candidate.mode === "Hue effect") {
         return applyEffect(candidate, target);
+      }
+      if (candidate.mode === DYNAMIC_MODE) {
+        if (candidate.effect !== "no_effect") {
+          throw new Error("Dynamic palette candidate requested an effect.");
+        }
+        try {
+          return await applyDynamic(candidate, target, candidate.palette);
+        } catch {
+          const current = await inspectTarget();
+          return applyStatic(
+            candidate,
+            current,
+            candidate.fallbackPalette,
+            "Dynamic palette could not be verified; applied a static gradient.",
+          );
+        }
       }
       if (STATIC_MODES.has(candidate.mode)) {
         if (candidate.effect !== "no_effect") {

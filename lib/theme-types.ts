@@ -1,5 +1,6 @@
 export const THEME_MODES = [
   "Static gradient",
+  "Dynamic palette",
   "Hue effect",
   "Static catalog fallback",
 ] as const;
