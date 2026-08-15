@@ -12,6 +12,7 @@ import {
   validateThemePayload,
 } from "../lib/validation";
 import { summarizePollResults } from "../lib/poll-results";
+import { rootSocialPreview } from "../lib/social-metadata";
 
 const baseCandidate = {
   id: "world-snake-day",
@@ -45,6 +46,19 @@ test("Pacific dates remain correct around daylight-saving changes", () => {
   assert.equal(pacificInstant("2026-03-08", 17, 50), "2026-03-09T00:50:00.000Z");
   assert.equal(pacificInstant("2026-11-01", 8, 0), "2026-11-01T16:00:00.000Z");
   assert.equal(pacificInstant("2026-11-01", 17, 50), "2026-11-02T01:50:00.000Z");
+});
+
+test("root social metadata uses the current Pacific poll image", () => {
+  assert.deepEqual(rootSocialPreview(new Date("2026-08-16T06:59:59Z")), {
+    title: "Today's Pink Door Poll",
+    description:
+      "Choose tonight's verified observance theme before 5:50 PM Pacific.",
+    image: "/api/share/poll/2026-08-15/image?v=2026-08-15",
+  });
+  assert.equal(
+    rootSocialPreview(new Date("2026-08-16T07:00:00Z")).image,
+    "/api/share/poll/2026-08-16/image?v=2026-08-16",
+  );
 });
 
 test("poll phases distinguish scheduled, open, preparing, and complete", () => {

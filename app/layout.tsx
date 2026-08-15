@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Sans, Fraunces } from "next/font/google";
 import { headers } from "next/headers";
+import { rootSocialPreview } from "@/lib/social-metadata";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -23,6 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
     requestHeaders.get("x-forwarded-proto") ??
     (host.startsWith("localhost") ? "http" : "https");
   const metadataBase = new URL(`${protocol}://${host}`);
+  const social = rootSocialPreview();
 
   return {
     metadataBase,
@@ -30,17 +32,15 @@ export async function generateMetadata(): Promise<Metadata> {
     description:
       "Vote for tonight's verified observance theme and see the colors lighting The House with the Pink Door.",
     openGraph: {
-      title: "Crème Brûlée or Chicken Fingers?",
-      description:
-        "Choose tonight's Pink Door light theme. Vote before 5:50 PM Pacific.",
-      images: [{ url: "/og.png", width: 1536, height: 1024 }],
+      title: social.title,
+      description: social.description,
+      images: [{ url: social.image, width: 1200, height: 630 }],
     },
     twitter: {
       card: "summary_large_image",
-      title: "Crème Brûlée or Chicken Fingers?",
-      description:
-        "Choose tonight's Pink Door light theme. Vote before 5:50 PM Pacific.",
-      images: ["/og.png"],
+      title: social.title,
+      description: social.description,
+      images: [social.image],
     },
   };
 }
