@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 export const FESTAVIA_LIGHT_NAME = "Festavia permanent 1";
 export const FESTAVIA_BRIGHTNESS = 75;
 export const FESTAVIA_TRANSITION_MS = 3000;
+export const FESTAVIA_COLOR_EFFECTS = Object.freeze(["sunbeam"]);
 
 const STATIC_MODES = new Set(["Static gradient", "Static catalog fallback"]);
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
@@ -244,6 +245,23 @@ function validatePalette(palette, label) {
   });
 }
 
+function validateEffectPalette(palette) {
+  if (!Array.isArray(palette) || palette.length > 1) {
+    throw new Error("Effect palette must contain at most one tint color.");
+  }
+  if (palette.length === 0) return [];
+  const color = asRecord(palette[0], "palette[0]");
+  if (
+    typeof color.name !== "string" ||
+    !color.name.trim() ||
+    typeof color.hex !== "string" ||
+    !HEX_COLOR.test(color.hex)
+  ) {
+    throw new Error("palette[0] is invalid.");
+  }
+  return [{ name: color.name.trim(), hex: color.hex.toUpperCase() }];
+}
+
 export function buildStaticGradientPayload(palette, gamut) {
   const colors = validatePalette(palette, "palette");
   return {
@@ -261,14 +279,21 @@ export function buildStaticGradientPayload(palette, gamut) {
   };
 }
 
-export function buildEffectPayload(effect) {
+export function buildEffectPayload(effect, tint = null, gamut = null) {
   if (typeof effect !== "string" || effect === "no_effect") {
     throw new Error("Hue effect is invalid.");
+  }
+  const action = { effect };
+  if (tint !== null) {
+    const [normalizedTint] = validateEffectPalette([tint]);
+    action.parameters = {
+      color: { xy: hexToGamutXy(normalizedTint.hex, gamut) },
+    };
   }
   return {
     on: { on: true },
     dimming: { brightness: FESTAVIA_BRIGHTNESS },
-    effects_v2: { action: { effect } },
+    effects_v2: { action },
   };
 }
 
@@ -299,6 +324,49 @@ function effectValues(light) {
     : [];
 }
 
+function effectColorValues(light) {
+  const available = new Set(effectValues(light));
+  return FESTAVIA_COLOR_EFFECTS.filter((effect) => available.has(effect));
+}
+
+function effectStatusParameters(light) {
+  const status = light.effects_v2?.status;
+  return status && typeof status === "object" ? status.parameters ?? null : null;
+}
+
+function publicEffectStatusParameters(light) {
+  const parameters = effectStatusParameters(light);
+  if (!parameters || typeof parameters !== "object") return null;
+  const result = {};
+  const xy = parameters.color?.xy;
+  if (typeof xy?.x === "number" && typeof xy?.y === "number") {
+    result.color = { xy: { x: xy.x, y: xy.y } };
+  }
+  const colorTemperature = parameters.color_temperature;
+  if (colorTemperature && typeof colorTemperature === "object") {
+    result.colorTemperature = {
+      mirek:
+        typeof colorTemperature.mirek === "number"
+          ? colorTemperature.mirek
+          : null,
+      mirekValid: colorTemperature.mirek_valid === true,
+    };
+  }
+  if (typeof parameters.speed === "number") {
+    result.speed = parameters.speed;
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+function xyMatches(actual, expected) {
+  return (
+    typeof actual?.x === "number" &&
+    typeof actual?.y === "number" &&
+    Math.abs(actual.x - expected.x) <= 0.002 &&
+    Math.abs(actual.y - expected.y) <= 0.002
+  );
+}
+
 function commonStateMatches(light) {
   return (
     light.on?.on === true &&
@@ -309,8 +377,12 @@ function commonStateMatches(light) {
   );
 }
 
-function effectStateMatches(light, effect) {
-  return commonStateMatches(light) && effectStatus(light) === effect;
+function effectStateMatches(light, effect, expectedTint = null) {
+  if (!commonStateMatches(light) || effectStatus(light) !== effect) {
+    return false;
+  }
+  if (expectedTint === null) return true;
+  return xyMatches(effectStatusParameters(light)?.color?.xy, expectedTint);
 }
 
 function staticStateMatches(light, expectedPointCount) {
@@ -419,11 +491,17 @@ export function createFestaviaController({
     if (!effectValues(target).includes(candidate.effect)) {
       throw new Error("Candidate effect is not currently supported.");
     }
-    if (!Array.isArray(candidate.palette) || candidate.palette.length > 0) {
+    const normalizedPalette = validateEffectPalette(candidate.palette);
+    if (
+      normalizedPalette.length === 1 &&
+      !effectColorValues(target).includes(candidate.effect)
+    ) {
       throw new Error(
-        "Candidate effect requires parameters the Festavia did not report.",
+        "Candidate effect does not support a verified custom color.",
       );
     }
+    const tint = normalizedPalette[0] ?? null;
+    const expectedTint = tint ? hexToGamutXy(tint.hex, target.color?.gamut) : null;
     const fallbackPalette = validatePalette(
       candidate.fallbackPalette,
       "fallbackPalette",
@@ -436,15 +514,18 @@ export function createFestaviaController({
     }
 
     try {
-      await putTarget(target, buildEffectPayload(candidate.effect));
+      await putTarget(
+        target,
+        buildEffectPayload(candidate.effect, tint, target.color?.gamut),
+      );
       await sleep(transitionWaitMs);
       const firstRead = await inspectTarget();
-      if (!effectStateMatches(firstRead, candidate.effect)) {
+      if (!effectStateMatches(firstRead, candidate.effect, expectedTint)) {
         throw new Error("effect readback mismatch");
       }
       await sleep(persistenceWaitMs);
       const persistentRead = await inspectTarget();
-      if (!effectStateMatches(persistentRead, candidate.effect)) {
+      if (!effectStateMatches(persistentRead, candidate.effect, expectedTint)) {
         throw new Error("effect did not remain active");
       }
       return {
@@ -454,7 +535,7 @@ export function createFestaviaController({
         observanceName: candidate.observanceName,
         mode: "Hue effect",
         effect: candidate.effect,
-        palette: [],
+        palette: normalizedPalette,
         brightness: persistentRead.dimming.brightness,
         fallbackUsed: false,
         substitutionNote: null,
@@ -486,7 +567,8 @@ export function createFestaviaController({
           modeValues: target.gradient?.mode_values ?? [],
         },
         effectValues: effectValues(target),
-        effectParameters: target.effects_v2?.action?.parameters ?? null,
+        effectColorValues: effectColorValues(target),
+        effectStatusParameters: publicEffectStatusParameters(target),
       };
     },
 

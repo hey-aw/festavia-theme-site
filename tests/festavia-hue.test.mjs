@@ -6,6 +6,7 @@ import {
   buildStaticGradientPayload,
   createCurlRequester,
   createFestaviaController,
+  FESTAVIA_COLOR_EFFECTS,
   hexToGamutXy,
   parseOpenHueConfig,
 } from "../scripts/festavia-hue-lib.mjs";
@@ -33,6 +34,7 @@ const effectCandidate = {
 
 function light({
   effect = "no_effect",
+  effectParameters = null,
   points = [],
   brightness = 75.1,
 } = {}) {
@@ -50,8 +52,13 @@ function light({
       points,
     },
     effects_v2: {
-      action: { effect_values: ["no_effect", "candle", "prism"] },
-      status: { effect },
+      action: {
+        effect_values: ["no_effect", "candle", "prism", "sunbeam"],
+      },
+      status: {
+        effect,
+        ...(effectParameters ? { parameters: effectParameters } : {}),
+      },
     },
     timed_effects: { status: "no_effect" },
     dynamics: { status: "none" },
@@ -118,6 +125,18 @@ test("static payload converts and gamut-clips all palette colors", () => {
   });
 });
 
+test("sunbeam tint is written through effects_v2 action parameters", () => {
+  assert.deepEqual(FESTAVIA_COLOR_EFFECTS, ["sunbeam"]);
+  const tint = { name: "Summer yellow", hex: "#F6D64A" };
+  const payload = buildEffectPayload("sunbeam", tint, gamut);
+  assert.equal(payload.effects_v2.action.effect, "sunbeam");
+  assert.deepEqual(
+    payload.effects_v2.action.parameters.color.xy,
+    hexToGamutXy(tint.hex, gamut),
+  );
+  assert.equal("gradient" in payload, false);
+});
+
 test("effect application requires two persistent matching readbacks", async () => {
   const puts = [];
   let getCount = 0;
@@ -175,6 +194,88 @@ test("effect that resets is replaced by the candidate static fallback", async ()
   assert.equal(puts[1].body.gradient.points.length, fallbackPalette.length);
 });
 
+test("tinted sunbeam verifies status parameters and returns its tint", async () => {
+  const tint = { name: "Summer yellow", hex: "#F6D64A" };
+  const expectedXy = hexToGamutXy(tint.hex, gamut);
+  const puts = [];
+  let getCount = 0;
+  const controller = createFestaviaController({
+    sleep: async () => {},
+    request: async (method, path, body) => {
+      if (method === "PUT") {
+        puts.push({ path, body });
+        return response({});
+      }
+      getCount += 1;
+      return response(
+        light({
+          effect: getCount === 1 ? "no_effect" : "sunbeam",
+          effectParameters:
+            getCount === 1 ? null : { color: { xy: expectedXy }, speed: 0.5 },
+        }),
+      );
+    },
+  });
+
+  const result = await controller.apply({
+    ...effectCandidate,
+    id: "summer-sunbeam",
+    effect: "sunbeam",
+    palette: [tint],
+  });
+  assert.equal(result.effect, "sunbeam");
+  assert.deepEqual(result.palette, [tint]);
+  assert.deepEqual(
+    puts[0].body.effects_v2.action.parameters.color.xy,
+    expectedXy,
+  );
+});
+
+test("inspect reads active parameters from effects_v2 status", async () => {
+  const controller = createFestaviaController({
+    request: async () =>
+      response(
+        light({
+          effect: "sunbeam",
+          effectParameters: {
+            color: { xy: { x: 0.4323, y: 0.4495 } },
+            color_temperature: { mirek: 153, mirek_valid: false },
+            speed: 0.5,
+          },
+        }),
+      ),
+  });
+
+  const result = await controller.inspect();
+  assert.deepEqual(result.effectColorValues, ["sunbeam"]);
+  assert.deepEqual(result.effectStatusParameters, {
+    color: { xy: { x: 0.4323, y: 0.4495 } },
+    colorTemperature: { mirek: 153, mirekValid: false },
+    speed: 0.5,
+  });
+  assert.equal("effectParameters" in result, false);
+});
+
+test("tints are rejected for effects without verified color support", async () => {
+  let putCount = 0;
+  const controller = createFestaviaController({
+    sleep: async () => {},
+    request: async (method) => {
+      if (method === "PUT") putCount += 1;
+      return response(light());
+    },
+  });
+
+  await assert.rejects(
+    controller.apply({
+      ...effectCandidate,
+      palette: [{ name: "Amber", hex: "#FFB347" }],
+    }),
+    /does not support a verified custom color/,
+  );
+  assert.equal(putCount, 0);
+});
+
 test("unsupported effects fail before changing the light", async () => {
   let putCount = 0;
   const controller = createFestaviaController({
@@ -186,7 +287,7 @@ test("unsupported effects fail before changing the light", async () => {
   });
 
   await assert.rejects(
-    controller.apply({ ...effectCandidate, effect: "sunbeam" }),
+    controller.apply({ ...effectCandidate, effect: "fire" }),
     /not currently supported/,
   );
   assert.equal(putCount, 0);
@@ -237,6 +338,8 @@ test("automation prompts invoke the skill through the project adapter", async ()
     assert.match(prompt, /node scripts\/festavia-hue\.mjs inspect/);
   }
   assert.match(candidatePrompt, /This is a read-only lighting run/);
+  assert.match(candidatePrompt, /effectColorValues/);
+  assert.match(candidatePrompt, /effects_v2\.status\.parameters/);
   assert.match(
     observancePrompt,
     /node scripts\/festavia-hue\.mjs apply <candidate-path>/,
