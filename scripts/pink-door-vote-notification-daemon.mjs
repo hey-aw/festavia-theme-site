@@ -69,6 +69,16 @@ export function normalizeDaemonState(value) {
       typeof candidate.lastSuccessfulDelivery === "string"
         ? candidate.lastSuccessfulDelivery
         : null,
+    pollOpenedDate:
+      typeof candidate.pollOpenedDate === "string" &&
+      /^\d{4}-\d{2}-\d{2}$/.test(candidate.pollOpenedDate)
+        ? candidate.pollOpenedDate
+        : null,
+    pollClosedDate:
+      typeof candidate.pollClosedDate === "string" &&
+      /^\d{4}-\d{2}-\d{2}$/.test(candidate.pollClosedDate)
+        ? candidate.pollClosedDate
+        : null,
   };
 }
 
@@ -116,6 +126,42 @@ export function formatDiscordMessage(event) {
   ].join("\n");
 }
 
+export function pollPhase(now, poll) {
+  const nowMs = now.getTime();
+  if (nowMs < Date.parse(poll.opensAt)) return "scheduled";
+  if (nowMs < Date.parse(poll.closesAt)) return "open";
+  return "closed";
+}
+
+export function formatPollOpenedMessage(poll, baseUrl) {
+  return [
+    "Pink Door voting is open",
+    "Today's choices:",
+    `- ${poll.winner.observanceName}`,
+    `- ${poll.alternate.observanceName}`,
+    "Voting closes: 5:50 PM Pacific",
+    `Vote: ${baseUrl}`,
+  ].join("\n");
+}
+
+export function formatPollClosedMessage(poll) {
+  const tied = poll.winner.voteCount === poll.alternate.voteCount;
+  const outcome =
+    poll.totalVoteCount === 0
+      ? `No votes were cast; today's preference selected ${poll.winner.observanceName}.`
+      : tied
+        ? `The vote tied; today's preference selected ${poll.winner.observanceName}.`
+        : `Winning choice: ${poll.winner.observanceName}`;
+  return [
+    "Pink Door voting is closed",
+    outcome,
+    "Final tally:",
+    `- ${poll.winner.observanceName}: ${voteLabel(poll.winner.voteCount)}`,
+    `- ${poll.alternate.observanceName}: ${voteLabel(poll.alternate.voteCount)}`,
+    "Tonight's display is scheduled for 6:00 PM Pacific.",
+  ].join("\n");
+}
+
 function validateEvent(event) {
   if (
     typeof event !== "object" ||
@@ -132,6 +178,52 @@ function validateEvent(event) {
     throw new Error("Pink Door site returned a malformed notification event.");
   }
   return event;
+}
+
+function validatePollCandidate(candidate) {
+  if (
+    typeof candidate !== "object" ||
+    candidate === null ||
+    typeof candidate.observanceName !== "string" ||
+    candidate.observanceName.length < 1 ||
+    !Number.isInteger(candidate.voteCount) ||
+    candidate.voteCount < 0
+  ) {
+    throw new Error("Pink Door site returned a malformed poll candidate.");
+  }
+  return {
+    observanceName: candidate.observanceName,
+    voteCount: candidate.voteCount,
+  };
+}
+
+function validatePollResult(result) {
+  if (
+    typeof result !== "object" ||
+    result === null ||
+    typeof result.date !== "string" ||
+    typeof result.opensAt !== "string" ||
+    typeof result.closesAt !== "string" ||
+    !Number.isFinite(Date.parse(result.opensAt)) ||
+    !Number.isFinite(Date.parse(result.closesAt)) ||
+    !Number.isInteger(result.totalVoteCount) ||
+    result.totalVoteCount < 0
+  ) {
+    throw new Error("Pink Door site returned a malformed poll result.");
+  }
+  const winner = validatePollCandidate(result.winner);
+  const alternate = validatePollCandidate(result.alternate);
+  if (winner.voteCount + alternate.voteCount !== result.totalVoteCount) {
+    throw new Error("Pink Door poll totals do not match candidate totals.");
+  }
+  return {
+    date: result.date,
+    opensAt: result.opensAt,
+    closesAt: result.closesAt,
+    winner,
+    alternate,
+    totalVoteCount: result.totalVoteCount,
+  };
 }
 
 function readEnvFile(path) {
@@ -224,6 +316,28 @@ async function fetchJson(url, init, label, retries = 1) {
   throw lastError;
 }
 
+async function fetchOptionalJson(url, init, label, retries = 1) {
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(url, init);
+      if (response.status === 404) return null;
+      if (!response.ok) {
+        throw new Error(`${label} returned HTTP ${response.status}.`);
+      }
+      return await response.json();
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) {
+        await new Promise((resolvePromise) =>
+          setTimeout(resolvePromise, 1_500),
+        );
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function publisherRequest(context, path, init = {}) {
   return fetchJson(
     `${context.baseUrl}${path}`,
@@ -286,6 +400,18 @@ async function pendingEvents(context, date) {
   return payload.events.map(validateEvent);
 }
 
+async function pollResult(context, date) {
+  const payload = await fetchOptionalJson(
+    `${context.baseUrl}/api/admin/polls/${date}/result`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${context.publisherToken}` },
+    },
+    "Pink Door site",
+  );
+  return payload === null ? null : validatePollResult(payload);
+}
+
 async function acknowledgeEvent(context, date, eventId) {
   await publisherRequest(
     context,
@@ -316,10 +442,27 @@ async function checkConfiguration(context) {
 
 async function runCycle(context) {
   const date = pacificDate();
+  const poll = await pollResult(context, date);
   const events = await pendingEvents(context, date);
   const state = loadState();
   let delivered = 0;
   let acknowledged = 0;
+  let lifecycleDelivered = 0;
+
+  if (
+    poll &&
+    pollPhase(new Date(), poll) === "open" &&
+    state.pollOpenedDate !== date
+  ) {
+    await sendDiscordMessage(
+      context,
+      formatPollOpenedMessage(poll, context.baseUrl),
+    );
+    state.pollOpenedDate = date;
+    state.lastSuccessfulDelivery = new Date().toISOString();
+    saveState(state);
+    lifecycleDelivered += 1;
+  }
 
   for (const event of events) {
     const alreadySent = state.sentUnacknowledged.includes(event.eventId);
@@ -339,11 +482,24 @@ async function runCycle(context) {
     acknowledged += 1;
   }
 
+  if (
+    poll &&
+    pollPhase(new Date(), poll) === "closed" &&
+    state.pollClosedDate !== date
+  ) {
+    await sendDiscordMessage(context, formatPollClosedMessage(poll));
+    state.pollClosedDate = date;
+    state.lastSuccessfulDelivery = new Date().toISOString();
+    saveState(state);
+    lifecycleDelivered += 1;
+  }
+
   writeHealth({
     status: "ready",
     pendingCount: events.length,
     deliveredCount: delivered,
     acknowledgedCount: acknowledged,
+    lifecycleDeliveredCount: lifecycleDelivered,
     lastSuccessfulPoll: new Date().toISOString(),
   });
 }

@@ -12,8 +12,8 @@ in D1.
   verifies the physical light, publishes the applied theme, and sends one
   Discord DM through the Discord for Codex plugin.
 - A local macOS daemon checks the public-safe notification outbox every 30
-  seconds and delivers first-vote notifications to the same approved Discord
-  DM. Vote changes do not create another alert.
+  seconds and delivers poll-open, first-vote, and poll-close notifications to
+  the same approved Discord DM. Vote changes do not create another alert.
 
 The public app has no route to the Hue bridge. Protected publishing routes use a
 bearer token stored in Sites runtime secrets and macOS Keychain.
@@ -82,7 +82,10 @@ copy those sources into the two live Codex automation configurations.
 
 The daemon reuses the Discord for Codex bot credential and sole allowlisted
 recipient. Discord identifiers and credentials stay in memory; its crash
-recovery file stores only notification event IDs.
+recovery file stores only notification event IDs and the dates of lifecycle
+messages already delivered. The open message lists both choices and links to
+the public poll. The close message reports the deterministic ranked result and
+final tally before the separate 6:00 PM light application.
 
 ```bash
 npm run daemon:vote-notifications:check
