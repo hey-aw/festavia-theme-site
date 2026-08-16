@@ -5,6 +5,9 @@ type PinkDoorEnv = {
   SOCIAL_ASSETS?: R2Bucket;
   PUBLISH_TOKEN?: string;
   COOKIE_SIGNING_SECRET?: string;
+  DISCORD_BOT_TOKEN?: string;
+  DISCORD_RECIPIENT_ID?: string;
+  PUBLIC_SITE_URL?: string;
 };
 
 export function runtimeEnv(): PinkDoorEnv {

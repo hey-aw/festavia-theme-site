@@ -78,31 +78,41 @@ export const votes = sqliteTable(
   ],
 );
 
-export const voteNotificationEvents = sqliteTable(
-  "vote_notification_events",
+export const discordNotificationEvents = sqliteTable(
+  "discord_notification_events",
   {
     id: text("id").primaryKey(),
     pollDate: text("poll_date")
       .notNull()
       .references(() => polls.date, { onDelete: "cascade" }),
-    voterHash: text("voter_hash").notNull(),
-    candidateId: text("candidate_id").notNull(),
+    eventType: text("event_type", {
+      enum: ["poll_opened", "vote_cast", "poll_closed"],
+    }).notNull(),
+    dedupeKey: text("dedupe_key").notNull(),
+    voterHash: text("voter_hash"),
+    candidateId: text("candidate_id"),
     createdAt: text("created_at").notNull(),
+    claimedAt: text("claimed_at"),
+    claimToken: text("claim_token"),
+    attemptCount: integer("attempt_count").notNull().default(0),
     deliveredAt: text("delivered_at"),
+    discordMessageId: text("discord_message_id"),
+    lastErrorCode: text("last_error_code"),
   },
   (table) => [
     foreignKey({
       columns: [table.pollDate, table.candidateId],
       foreignColumns: [themeCandidates.pollDate, themeCandidates.id],
-      name: "vote_notification_events_poll_candidate_fk",
+      name: "discord_notification_events_poll_candidate_fk",
     }).onDelete("cascade"),
-    uniqueIndex("vote_notification_events_voter_idx").on(
-      table.pollDate,
-      table.voterHash,
-    ),
-    index("vote_notification_events_pending_idx").on(
-      table.pollDate,
+    uniqueIndex("discord_notification_events_dedupe_idx").on(table.dedupeKey),
+    index("discord_notification_events_pending_idx").on(
       table.deliveredAt,
+      table.claimedAt,
+      table.createdAt,
+    ),
+    index("discord_notification_events_poll_idx").on(
+      table.pollDate,
       table.createdAt,
     ),
   ],

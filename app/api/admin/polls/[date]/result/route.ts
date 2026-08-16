@@ -1,5 +1,11 @@
 import { NextRequest } from "next/server";
-import { pollForDate, rankedPollResult } from "@/lib/data";
+import {
+  enqueuePollClosedNotification,
+  pollForDate,
+  rankedPollResult,
+} from "@/lib/data";
+import { scheduleDiscordNotificationDrain } from "@/lib/discord-notification-scheduler";
+import { shouldEnqueuePollClosed } from "@/lib/discord-notification-types";
 import { requirePublisher } from "@/lib/security";
 import { isIsoDate } from "@/lib/pacific-time";
 
@@ -19,8 +25,11 @@ export async function GET(
   if (!poll) {
     return Response.json({ error: "Poll not found." }, { status: 404 });
   }
+  if (shouldEnqueuePollClosed(new Date(), poll.closesAt)) {
+    await enqueuePollClosedNotification(date);
+  }
   const rankedCandidates = await rankedPollResult(date);
-  return Response.json({
+  const response = Response.json({
     date,
     opensAt: poll.opensAt,
     closesAt: poll.closesAt,
@@ -31,4 +40,6 @@ export async function GET(
       0,
     ),
   });
+  scheduleDiscordNotificationDrain();
+  return response;
 }

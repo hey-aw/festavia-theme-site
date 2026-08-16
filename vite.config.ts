@@ -17,6 +17,9 @@ const localBindingConfig = {
   vars: {
     PUBLISH_TOKEN: "local-development-publisher-token",
     COOKIE_SIGNING_SECRET: "local-development-cookie-signing-secret",
+    DISCORD_BOT_TOKEN: "local-development-discord-token",
+    DISCORD_RECIPIENT_ID: "000000000000000000",
+    PUBLIC_SITE_URL: "http://localhost:3000",
   },
   d1_databases: d1
     ? [

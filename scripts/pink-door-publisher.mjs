@@ -10,7 +10,7 @@ const KEYCHAIN_SERVICE = "festavia-theme-site-publisher";
 
 function usage() {
   console.error(
-    "Usage: pink-door-publisher.mjs <poll|result|theme|social-poll|social-theme|notifications|ack-notification> <YYYY-MM-DD> [payload-or-image]",
+    "Usage: pink-door-publisher.mjs <poll|result|theme|social-poll|social-theme|notifications|retry-notifications> <YYYY-MM-DD> [payload-or-image]",
   );
   process.exit(2);
 }
@@ -67,7 +67,7 @@ async function requestWithRetry(url, init, retries = 1) {
 
 const [operation, date, payloadPath] = process.argv.slice(2);
 if (
-  !["poll", "result", "theme", "social-poll", "social-theme", "notifications", "ack-notification"].includes(
+  !["poll", "result", "theme", "social-poll", "social-theme", "notifications", "retry-notifications"].includes(
     operation,
   ) ||
   !date
@@ -75,7 +75,7 @@ if (
   usage();
 }
 if (
-  ["poll", "theme", "social-poll", "social-theme", "ack-notification"].includes(operation) &&
+  ["poll", "theme", "social-poll", "social-theme"].includes(operation) &&
   !payloadPath
 ) {
   usage();
@@ -93,6 +93,13 @@ if (operation === "result" || operation === "notifications") {
       ? `/api/admin/polls/${date}/result`
       : `/api/admin/polls/${date}/notifications`;
   init = { method: "GET", headers };
+} else if (operation === "retry-notifications") {
+  endpoint = `/api/admin/polls/${date}/notifications`;
+  init = {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "retry" }),
+  };
 } else if (operation === "social-poll" || operation === "social-theme") {
   const kind = operation === "social-poll" ? "poll" : "theme";
   endpoint = `/api/admin/social/${date}/${kind}`;
@@ -111,11 +118,9 @@ if (operation === "result" || operation === "notifications") {
   endpoint =
     operation === "poll"
       ? `/api/admin/polls/${date}`
-      : operation === "theme"
-        ? `/api/admin/themes/${date}`
-        : `/api/admin/polls/${date}/notifications`;
+      : `/api/admin/themes/${date}`;
   init = {
-    method: operation === "ack-notification" ? "POST" : "PUT",
+    method: "PUT",
     headers: { ...headers, "Content-Type": "application/json" },
     body: payload,
   };

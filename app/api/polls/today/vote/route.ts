@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { castVote, pollForDate } from "@/lib/data";
+import { scheduleDiscordNotificationDrain } from "@/lib/discord-notification-scheduler";
 import { pacificDate, phaseForPoll } from "@/lib/pacific-time";
 import { voterIdentity } from "@/lib/security";
 
@@ -57,5 +58,10 @@ export async function PUT(request: NextRequest) {
 
   const headers = new Headers({ "Cache-Control": "private, no-store" });
   if (identity.setCookie) headers.set("Set-Cookie", identity.setCookie);
-  return Response.json({ ok: true, candidateId, isNewVote }, { headers });
+  const response = Response.json(
+    { ok: true, candidateId, isNewVote },
+    { headers },
+  );
+  scheduleDiscordNotificationDrain();
+  return response;
 }

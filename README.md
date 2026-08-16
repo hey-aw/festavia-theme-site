@@ -11,9 +11,9 @@ in D1.
 - 6:00 PM: the existing Festavia automation applies the eligible winner,
   verifies the physical light, publishes the applied theme, and sends one
   Discord DM through the Discord for Codex plugin.
-- A local macOS daemon checks the public-safe notification outbox every 30
-  seconds and delivers poll-open, first-vote, and poll-close notifications to
-  the same approved Discord DM. Vote changes do not create another alert.
+- The Sites Worker delivers poll-open, first-vote, and poll-close notifications
+  from the requests that create them. D1 keeps failed deliveries for a later
+  request or an explicit retry. Vote changes do not create another alert.
 
 The public app has no route to the Hue bridge. Protected publishing routes use a
 bearer token stored in Sites runtime secrets and macOS Keychain.
@@ -38,7 +38,7 @@ node scripts/pink-door-publisher.mjs poll 2026-07-24 poll.json
 node scripts/pink-door-publisher.mjs result 2026-07-24
 node scripts/pink-door-publisher.mjs theme 2026-07-24 theme.json
 node scripts/pink-door-publisher.mjs notifications 2026-07-24
-node scripts/pink-door-publisher.mjs ack-notification 2026-07-24 event.json
+node scripts/pink-door-publisher.mjs retry-notifications 2026-07-24
 ```
 
 The helper reads the public base URL from `publisher.config.json` and the bearer
@@ -78,26 +78,17 @@ candidate's static fallback palette before reporting success.
 After reviewing prompt changes under `automations/`, run the sync command to
 copy those sources into the two live Codex automation configurations.
 
-## Discord notification daemon
+## Discord notifications
 
-The daemon reuses the Discord for Codex bot credential and sole allowlisted
-recipient. Discord identifiers and credentials stay in memory; its crash
-recovery file stores only notification event IDs and the dates of lifecycle
-messages already delivered. The open message lists both choices and links to
-the public poll. The close message reports the deterministic ranked result and
-final tally before the separate 6:00 PM light application.
+The existing Sites Worker sends notifications through the Discord bot to its
+sole approved recipient. The bot token remains a Sites secret, and Discord
+identifiers are never returned by a public route. A D1 outbox provides bounded
+retry and deduplication without a local process or scheduled poller. The open
+message lists both choices and links to the public poll. The close message
+reports the deterministic ranked result and final tally before the separate
+6:00 PM light application.
 
-```bash
-npm run daemon:vote-notifications:check
-npm run daemon:vote-notifications:install
-```
-
-The installer manages the
-`com.hey-aw.pink-door-discord-vote-notifications` user LaunchAgent. Runtime
-health and owner-only logs are stored under
-`~/.codex/daemons/pink-door-discord-vote-notifications/`.
-
-Production: <https://house-with-pink-door.hey-aw.chatgpt.site>
+Production: <https://pink.awzone.com>
 
 Printable assets:
 

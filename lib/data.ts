@@ -3,19 +3,31 @@ import type {
   PaletteColor,
   ThemeCandidate,
 } from "./theme-types";
+import type {
+  ClaimedDiscordNotification,
+  DiscordNotificationEventType,
+} from "./discord-notification-types";
+import { discordNotificationDedupeKey } from "./discord-notification-types";
 import { rawDb } from "./runtime-env";
 
 type DatabaseRow = Record<string, unknown>;
 
-export type PendingVoteNotification = {
+export type DiscordNotificationStatus = {
   eventId: string;
+  eventType: DiscordNotificationEventType;
+  createdAt: string;
+  claimedAt: string | null;
+  attemptCount: number;
+  deliveredAt: string | null;
+  discordMessageId: string | null;
+  lastErrorCode: string | null;
+};
+
+export type VoteNotificationDetails = {
   date: string;
-  candidateId: string;
   observanceName: string;
   candidateVoteCount: number;
   totalVoteCount: number;
-  closesAt: string;
-  createdAt: string;
 };
 
 function parsePalette(value: unknown): PaletteColor[] {
@@ -198,14 +210,21 @@ export async function castVote(input: {
       ),
     database
       .prepare(
-        `INSERT INTO vote_notification_events (
-          id, poll_date, voter_hash, candidate_id, created_at, delivered_at
-        ) VALUES (?, ?, ?, ?, ?, NULL)
-        ON CONFLICT(poll_date, voter_hash) DO NOTHING`,
+        `INSERT INTO discord_notification_events (
+          id, poll_date, event_type, dedupe_key, voter_hash, candidate_id,
+          created_at, claimed_at, claim_token, attempt_count, delivered_at,
+          discord_message_id, last_error_code
+        ) VALUES (?, ?, 'vote_cast', ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, NULL)
+        ON CONFLICT(dedupe_key) DO NOTHING`,
       )
       .bind(
         crypto.randomUUID(),
         input.date,
+        discordNotificationDedupeKey(
+          "vote_cast",
+          input.date,
+          input.voterHash,
+        ),
         input.voterHash,
         input.candidateId,
         now,
@@ -214,58 +233,176 @@ export async function castVote(input: {
   return { isNewVote: Number(results[2]?.meta.changes ?? 0) > 0 };
 }
 
-export async function pendingVoteNotifications(
+export async function discordNotificationStatusForDate(
   date: string,
-  limit = 50,
-): Promise<PendingVoteNotification[]> {
+  limit = 100,
+): Promise<DiscordNotificationStatus[]> {
   const result = await rawDb()
     .prepare(
-      `SELECT e.id, e.poll_date, e.candidate_id, e.created_at,
-        c.observance_name, p.closes_at,
-        (
-          SELECT COUNT(*)
-          FROM votes candidate_votes
-          WHERE candidate_votes.poll_date = e.poll_date
-            AND candidate_votes.candidate_id = e.candidate_id
-        ) AS candidate_vote_count,
-        (
-          SELECT COUNT(*)
-          FROM votes all_votes
-          WHERE all_votes.poll_date = e.poll_date
-        ) AS total_vote_count
-      FROM vote_notification_events e
-      JOIN polls p ON p.date = e.poll_date
-      JOIN theme_candidates c
-        ON c.poll_date = e.poll_date AND c.id = e.candidate_id
-      WHERE e.poll_date = ? AND e.delivered_at IS NULL
-      ORDER BY e.created_at ASC, e.id ASC
+      `SELECT id, event_type, created_at, claimed_at, attempt_count,
+        delivered_at, discord_message_id, last_error_code
+      FROM discord_notification_events
+      WHERE poll_date = ?
+      ORDER BY created_at ASC, id ASC
       LIMIT ?`,
     )
     .bind(date, limit)
     .all<DatabaseRow>();
   return result.results.map((row) => ({
     eventId: String(row.id),
-    date: String(row.poll_date),
-    candidateId: String(row.candidate_id),
-    observanceName: String(row.observance_name),
-    candidateVoteCount: Number(row.candidate_vote_count ?? 0),
-    totalVoteCount: Number(row.total_vote_count ?? 0),
-    closesAt: String(row.closes_at),
+    eventType: String(row.event_type) as DiscordNotificationEventType,
     createdAt: String(row.created_at),
+    claimedAt: row.claimed_at ? String(row.claimed_at) : null,
+    attemptCount: Number(row.attempt_count ?? 0),
+    deliveredAt: row.delivered_at ? String(row.delivered_at) : null,
+    discordMessageId: row.discord_message_id
+      ? String(row.discord_message_id)
+      : null,
+    lastErrorCode: row.last_error_code ? String(row.last_error_code) : null,
   }));
 }
 
-export async function markVoteNotificationDelivered(
-  date: string,
+export async function claimNextDiscordNotification(
+  now: Date,
+  leaseMilliseconds = 120_000,
+): Promise<ClaimedDiscordNotification | null> {
+  const database = rawDb();
+  const claimedAt = now.toISOString();
+  const leaseCutoff = new Date(now.getTime() - leaseMilliseconds).toISOString();
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const candidate = await database
+      .prepare(
+        `SELECT id
+        FROM discord_notification_events
+        WHERE delivered_at IS NULL
+          AND (claimed_at IS NULL OR claimed_at < ?)
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1`,
+      )
+      .bind(leaseCutoff)
+      .first<{ id: string }>();
+    if (!candidate) return null;
+
+    const claimToken = crypto.randomUUID();
+    const claim = await database
+      .prepare(
+        `UPDATE discord_notification_events
+        SET claimed_at = ?, claim_token = ?, attempt_count = attempt_count + 1,
+          last_error_code = NULL
+        WHERE id = ? AND delivered_at IS NULL
+          AND (claimed_at IS NULL OR claimed_at < ?)`,
+      )
+      .bind(claimedAt, claimToken, candidate.id, leaseCutoff)
+      .run();
+    if (Number(claim.meta.changes ?? 0) === 0) continue;
+
+    const row = await database
+      .prepare(
+        `SELECT id, poll_date, event_type, candidate_id, created_at,
+          claim_token, attempt_count
+        FROM discord_notification_events
+        WHERE id = ? AND claim_token = ?`,
+      )
+      .bind(candidate.id, claimToken)
+      .first<DatabaseRow>();
+    if (!row) continue;
+    return {
+      eventId: String(row.id),
+      date: String(row.poll_date),
+      eventType: String(row.event_type) as DiscordNotificationEventType,
+      candidateId: row.candidate_id ? String(row.candidate_id) : null,
+      createdAt: String(row.created_at),
+      claimToken,
+      attemptCount: Number(row.attempt_count ?? 0),
+    };
+  }
+  return null;
+}
+
+export async function markDiscordNotificationDelivered(
   eventId: string,
+  claimToken: string,
+  discordMessageId: string,
+  deliveredAt: string,
 ): Promise<boolean> {
   const result = await rawDb()
     .prepare(
-      `UPDATE vote_notification_events
-      SET delivered_at = COALESCE(delivered_at, ?)
-      WHERE poll_date = ? AND id = ?`,
+      `UPDATE discord_notification_events
+      SET delivered_at = ?, discord_message_id = ?, claimed_at = NULL,
+        claim_token = NULL, last_error_code = NULL
+      WHERE id = ? AND claim_token = ? AND delivered_at IS NULL`,
     )
-    .bind(new Date().toISOString(), date, eventId)
+    .bind(deliveredAt, discordMessageId, eventId, claimToken)
+    .run();
+  return Number(result.meta.changes ?? 0) > 0;
+}
+
+export async function releaseDiscordNotificationClaim(
+  eventId: string,
+  claimToken: string,
+  errorCode: string,
+): Promise<boolean> {
+  const result = await rawDb()
+    .prepare(
+      `UPDATE discord_notification_events
+      SET claimed_at = NULL, claim_token = NULL, last_error_code = ?
+      WHERE id = ? AND claim_token = ? AND delivered_at IS NULL`,
+    )
+    .bind(errorCode, eventId, claimToken)
+    .run();
+  return Number(result.meta.changes ?? 0) > 0;
+}
+
+export async function voteNotificationDetails(
+  date: string,
+  candidateId: string,
+): Promise<VoteNotificationDetails | null> {
+  const row = await rawDb()
+    .prepare(
+      `SELECT c.observance_name,
+        (
+          SELECT COUNT(*) FROM votes candidate_votes
+          WHERE candidate_votes.poll_date = c.poll_date
+            AND candidate_votes.candidate_id = c.id
+        ) AS candidate_vote_count,
+        (
+          SELECT COUNT(*) FROM votes all_votes
+          WHERE all_votes.poll_date = c.poll_date
+        ) AS total_vote_count
+      FROM theme_candidates c
+      WHERE c.poll_date = ? AND c.id = ?`,
+    )
+    .bind(date, candidateId)
+    .first<DatabaseRow>();
+  if (!row) return null;
+  return {
+    date,
+    observanceName: String(row.observance_name),
+    candidateVoteCount: Number(row.candidate_vote_count ?? 0),
+    totalVoteCount: Number(row.total_vote_count ?? 0),
+  };
+}
+
+export async function enqueuePollClosedNotification(
+  date: string,
+): Promise<boolean> {
+  const now = new Date().toISOString();
+  const result = await rawDb()
+    .prepare(
+      `INSERT INTO discord_notification_events (
+        id, poll_date, event_type, dedupe_key, voter_hash, candidate_id,
+        created_at, claimed_at, claim_token, attempt_count, delivered_at,
+        discord_message_id, last_error_code
+      ) VALUES (?, ?, 'poll_closed', ?, NULL, NULL, ?, NULL, NULL, 0, NULL, NULL, NULL)
+      ON CONFLICT(dedupe_key) DO NOTHING`,
+    )
+    .bind(
+      crypto.randomUUID(),
+      date,
+      discordNotificationDedupeKey("poll_closed", date),
+      now,
+    )
     .run();
   return Number(result.meta.changes ?? 0) > 0;
 }
@@ -275,7 +412,7 @@ export async function upsertPoll(input: {
   opensAt: string;
   closesAt: string;
   candidates: [ThemeCandidate, ThemeCandidate];
-}): Promise<void> {
+}): Promise<{ notificationCreated: boolean }> {
   const database = rawDb();
   const now = new Date().toISOString();
   const voteCount = await database
@@ -355,7 +492,29 @@ export async function upsertPoll(input: {
     );
   }
 
-  await database.batch(statements);
+  statements.push(
+    database
+      .prepare(
+        `INSERT INTO discord_notification_events (
+          id, poll_date, event_type, dedupe_key, voter_hash, candidate_id,
+          created_at, claimed_at, claim_token, attempt_count, delivered_at,
+          discord_message_id, last_error_code
+        ) VALUES (?, ?, 'poll_opened', ?, NULL, NULL, ?, NULL, NULL, 0, NULL, NULL, NULL)
+        ON CONFLICT(dedupe_key) DO NOTHING`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        input.date,
+        discordNotificationDedupeKey("poll_opened", input.date),
+        now,
+      ),
+  );
+
+  const results = await database.batch(statements);
+  return {
+    notificationCreated:
+      Number(results[results.length - 1]?.meta.changes ?? 0) > 0,
+  };
 }
 
 export async function rankedPollResult(

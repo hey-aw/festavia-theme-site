@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { upsertPoll } from "@/lib/data";
+import { scheduleDiscordNotificationDrain } from "@/lib/discord-notification-scheduler";
 import { requirePublisher } from "@/lib/security";
 import { validatePollPayload } from "@/lib/validation";
 
@@ -16,7 +17,9 @@ export async function PUT(
   try {
     const payload = validatePollPayload(await request.json(), date);
     await upsertPoll({ date, ...payload });
-    return Response.json({ ok: true, date });
+    const response = Response.json({ ok: true, date });
+    scheduleDiscordNotificationDrain();
+    return response;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unable to publish poll.";

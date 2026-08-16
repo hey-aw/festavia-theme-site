@@ -22,6 +22,13 @@
       "when": 1784922387190,
       "tag": "0002_amazing_spectrum",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786838921313,
+      "tag": "0003_kind_silver_surfer",
+      "breakpoints": true
     }
   ]
 }

@@ -1,14 +1,10 @@
 import { NextRequest } from "next/server";
-import {
-  markVoteNotificationDelivered,
-  pendingVoteNotifications,
-} from "@/lib/data";
+import { discordNotificationStatusForDate } from "@/lib/data";
+import { scheduleDiscordNotificationDrain } from "@/lib/discord-notification-scheduler";
 import { isIsoDate } from "@/lib/pacific-time";
 import { requirePublisher } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
-
-const EVENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function GET(
   request: NextRequest,
@@ -20,9 +16,10 @@ export async function GET(
   if (!isIsoDate(date)) {
     return Response.json({ error: "Invalid date." }, { status: 400 });
   }
-  const events = await pendingVoteNotifications(date);
+  const events = await discordNotificationStatusForDate(date);
+  const pendingCount = events.filter((event) => !event.deliveredAt).length;
   return Response.json(
-    { date, events },
+    { date, pendingCount, events },
     { headers: { "Cache-Control": "private, no-store" } },
   );
 }
@@ -44,19 +41,19 @@ export async function POST(
   } catch {
     return Response.json({ error: "Invalid JSON." }, { status: 400 });
   }
-  const eventId =
+  const action =
     typeof body === "object" &&
     body !== null &&
-    typeof (body as Record<string, unknown>).eventId === "string"
-      ? (body as Record<string, string>).eventId
+    typeof (body as Record<string, unknown>).action === "string"
+      ? (body as Record<string, string>).action
       : "";
-  if (!EVENT_ID.test(eventId)) {
-    return Response.json({ error: "Valid eventId is required." }, { status: 400 });
+  if (action !== "retry") {
+    return Response.json(
+      { error: 'action must be "retry".' },
+      { status: 400 },
+    );
   }
 
-  const acknowledged = await markVoteNotificationDelivered(date, eventId);
-  if (!acknowledged) {
-    return Response.json({ error: "Notification event not found." }, { status: 404 });
-  }
-  return Response.json({ ok: true, date, eventId });
+  scheduleDiscordNotificationDrain();
+  return Response.json({ ok: true, date, scheduled: true }, { status: 202 });
 }
