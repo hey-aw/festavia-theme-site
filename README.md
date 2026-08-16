@@ -88,7 +88,7 @@ message lists both choices and links to the public poll. The close message
 reports the deterministic ranked result and final tally before the separate
 6:00 PM light application.
 
-Production: <https://pink.awzone.com>
+Production: <https://house-with-pink-door.hey-aw.chatgpt.site>
 
 Printable assets:
 
