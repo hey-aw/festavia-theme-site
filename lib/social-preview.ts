@@ -42,7 +42,7 @@ function candidatePanel(candidate: ThemeCandidate, x: number, y: number, width: 
 
 export function renderPollCard(input: { date: string; candidates: ThemeCandidate[] }): string {
   const content = input.candidates.length === 2
-    ? `${text("Vote for tonight's light", 72, 150, 48, WHITE, 700)}${text("Two public-safe themes are ready for your choice.", 72, 190, 22, "#D9D0D8")}${candidatePanel(input.candidates[0], 72, 236, 500)}${candidatePanel(input.candidates[1], 598, 236, 500)}${text("Vote before 5:50 PM Pacific", 72, 532, 20, GREEN, 700)}`
+    ? `${text("Vote for tonight's light", 72, 150, 48, WHITE, 700)}${text("Two public-safe themes are ready for your choice.", 72, 190, 22, "#D9D0D8")}${candidatePanel(input.candidates[0], 72, 236, 500)}${candidatePanel(input.candidates[1], 598, 236, 500)}${text("Vote before sunset", 72, 532, 20, GREEN, 700)}`
     : `${text("Tonight's choices arrive at 8 AM Pacific", 72, 190, 42, WHITE, 700)}${text("Come back to The House with the Pink Door to vote.", 72, 242, 22, "#D9D0D8")}${text("The public preview is not open yet.", 72, 300, 20, CYAN, 600)}`;
   return frame(input.date, content);
 }

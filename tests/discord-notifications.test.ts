@@ -49,7 +49,7 @@ test("formats the existing open, vote, and close messages", () => {
       "Date: 2026-07-24",
       "Choice: World Brain Day",
       "Current tally: 1 vote for this choice, 2 votes total",
-      "Voting closes: 5:50 PM Pacific",
+      "Voting closes: sunset",
     ].join("\n"),
   );
   assert.equal(
@@ -62,7 +62,7 @@ test("formats the existing open, vote, and close messages", () => {
       "Today's choices:",
       "- National Mustard Day",
       "- Fermentation Celebration",
-      "Voting closes: 5:50 PM Pacific",
+      "Voting closes: sunset",
       "Vote: https://house-with-pink-door.example",
     ].join("\n"),
   );
@@ -74,7 +74,7 @@ test("formats the existing open, vote, and close messages", () => {
       "Final tally:",
       "- National Mustard Day: 3 votes",
       "- Fermentation Celebration: 2 votes",
-      "Tonight's display is scheduled for 6:00 PM Pacific.",
+      "Tonight's display will be set shortly after sunset.",
     ].join("\n"),
   );
 });

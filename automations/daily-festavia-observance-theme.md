@@ -8,7 +8,9 @@ Use `$control-hue-lights` and follow its Festavia theme project adapter. The rep
 
 `node scripts/pink-door-publisher.mjs result <YYYY-MM-DD>`
 
-The helper reads the publisher credential from macOS Keychain and retries once. Never print or log the credential. The result ranks candidates by vote count, then preference rank for ties and no-vote polls. Keep the returned winner, alternate, vote counts, synopsis, source, palette, mode, effect, lighting description, and fallback palette available for later publication and Discord reporting.
+The helper reads the publisher credential from macOS Keychain and retries once. Never print or log the credential. The result ranks candidates by vote count, then preference rank for ties and no-vote polls. Keep the returned winner, alternate, vote counts, synopsis, source, palette, mode, effect, lighting description, and fallback palette available for later publication and Messages reporting.
+
+Treat the returned `closesAt` as authoritative. Before inspecting or changing Hue state, compare the current instant with `closesAt`. If the poll is still open, stop without changing the light, publishing a theme, generating an image, or sending a message; record a concise schedule-mismatch note in automation memory. Also stop silently if automation memory or the live public theme record shows that today's theme was already successfully applied and published. These guards make schedule retries idempotent and prevent sunset voting from ending early.
 
 2. Target only the Philips Hue light named exactly "Festavia permanent 1" (currently in Porch). Do not use `openhue get` or `openhue set` from the Codex command runner; macOS Local Network Privacy blocks that executable even though it works in Terminal. From this project directory, inspect the exact light and its sanitized Hue v2 capabilities with:
 

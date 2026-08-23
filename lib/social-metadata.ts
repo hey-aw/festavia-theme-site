@@ -10,7 +10,7 @@ export function rootSocialPreview(now = new Date()): {
   return {
     title: "Today's Pink Door Poll",
     description:
-      "Choose tonight's verified observance theme before 5:50 PM Pacific.",
+      "Choose tonight's verified observance theme before sunset.",
     image: `/api/share/poll/${date}/image?v=${date}`,
   };
 }

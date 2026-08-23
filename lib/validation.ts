@@ -6,6 +6,7 @@ import {
   type ThemeCandidate,
 } from "./theme-types";
 import { isIsoDate, pacificInstant } from "./pacific-time";
+import { pinkDoorSunset } from "./pink-door-sunset.mjs";
 
 const HEX_COLOR = /^#[0-9A-F]{6}$/;
 const CANDIDATE_ID = /^[a-z0-9][a-z0-9-]{2,63}$/;
@@ -151,13 +152,15 @@ export function validatePollPayload(
     throw new Error("Poll times must be valid ISO timestamps.");
   }
   const expectedOpensAt = pacificInstant(date, 8, 0);
-  const expectedClosesAt = pacificInstant(date, 17, 50);
+  const expectedClosesAt = pinkDoorSunset(
+    new Date(pacificInstant(date, 12, 0)),
+  ).toISOString();
   if (
     new Date(opensAt).toISOString() !== expectedOpensAt ||
     new Date(closesAt).toISOString() !== expectedClosesAt
   ) {
     throw new Error(
-      "Poll must open at 08:00 and close at 17:50 America/Los_Angeles.",
+      "Poll must open at 08:00 America/Los_Angeles and close at Portland sunset.",
     );
   }
   if (!Array.isArray(value.candidates) || value.candidates.length !== 2) {

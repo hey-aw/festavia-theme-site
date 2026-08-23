@@ -1,3 +1,5 @@
+import { pinkDoorSunset } from "../lib/pink-door-sunset.mjs";
+
 const PACIFIC_TIME_ZONE = "America/Los_Angeles";
 
 function offsetMinutes(date) {
@@ -27,9 +29,10 @@ function instant(date, hour, minute) {
 }
 
 export function pollTiming(date) {
+  const localNoon = new Date(instant(date, 12, 0));
   return {
     opensAt: instant(date, 8, 0),
-    closesAt: instant(date, 17, 50),
+    closesAt: pinkDoorSunset(localNoon).toISOString(),
   };
 }
 

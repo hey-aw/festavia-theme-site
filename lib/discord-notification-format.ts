@@ -29,7 +29,7 @@ export function formatVoteNotification(
     `Date: ${event.date}`,
     `Choice: ${event.observanceName}`,
     `Current tally: ${voteLabel(event.candidateVoteCount)} for this choice, ${voteLabel(event.totalVoteCount)} total`,
-    "Voting closes: 5:50 PM Pacific",
+    "Voting closes: sunset",
   ].join("\n");
 }
 
@@ -42,7 +42,7 @@ export function formatPollOpenedNotification(
     "Today's choices:",
     `- ${poll.winner.observanceName}`,
     `- ${poll.alternate.observanceName}`,
-    "Voting closes: 5:50 PM Pacific",
+    "Voting closes: sunset",
     `Vote: ${baseUrl}`,
   ].join("\n");
 }
@@ -63,6 +63,6 @@ export function formatPollClosedNotification(
     "Final tally:",
     `- ${poll.winner.observanceName}: ${voteLabel(poll.winner.voteCount)}`,
     `- ${poll.alternate.observanceName}: ${voteLabel(poll.alternate.voteCount)}`,
-    "Tonight's display is scheduled for 6:00 PM Pacific.",
+    "Tonight's display will be set shortly after sunset.",
   ].join("\n");
 }

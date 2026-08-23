@@ -13,6 +13,7 @@ import {
 } from "../lib/validation";
 import { summarizePollResults } from "../lib/poll-results";
 import { rootSocialPreview } from "../lib/social-metadata";
+import { pollTiming } from "../scripts/poll-timing.mjs";
 
 const baseCandidate = {
   id: "world-snake-day",
@@ -52,7 +53,7 @@ test("root social metadata uses the current Pacific poll image", () => {
   assert.deepEqual(rootSocialPreview(new Date("2026-08-16T06:59:59Z")), {
     title: "Today's Pink Door Poll",
     description:
-      "Choose tonight's verified observance theme before 5:50 PM Pacific.",
+      "Choose tonight's verified observance theme before sunset.",
     image: "/api/share/poll/2026-08-15/image?v=2026-08-15",
   });
   assert.equal(
@@ -83,10 +84,10 @@ test("poll phases distinguish scheduled, open, preparing, and complete", () => {
 });
 
 test("poll validation requires exactly two ranked candidates", () => {
+  const timing = pollTiming("2026-07-23");
   const result = validatePollPayload(
     {
-      opensAt: "2026-07-23T15:00:00.000Z",
-      closesAt: "2026-07-24T00:50:00.000Z",
+      ...timing,
       candidates: [
         baseCandidate,
         {
@@ -108,8 +109,7 @@ test("poll validation requires exactly two ranked candidates", () => {
     () =>
       validatePollPayload(
         {
-          opensAt: "2026-07-23T15:00:00.000Z",
-          closesAt: "2026-07-24T00:50:00.000Z",
+          ...timing,
           candidates: [baseCandidate],
         },
         "2026-07-23",
@@ -121,7 +121,7 @@ test("poll validation requires exactly two ranked candidates", () => {
       validatePollPayload(
         {
           opensAt: "2026-07-23T15:01:00.000Z",
-          closesAt: "2026-07-24T00:50:00.000Z",
+          closesAt: timing.closesAt,
           candidates: [
             baseCandidate,
             {
@@ -133,8 +133,19 @@ test("poll validation requires exactly two ranked candidates", () => {
         },
         "2026-07-23",
       ),
-    /08:00.*17:50/,
+    /08:00.*sunset/,
   );
+});
+
+test("poll timing closes at standard Portland sunset", () => {
+  assert.deepEqual(pollTiming("2026-08-22"), {
+    opensAt: "2026-08-22T15:00:00.000Z",
+    closesAt: "2026-08-23T03:08:50.069Z",
+  });
+  assert.deepEqual(pollTiming("2026-12-21"), {
+    opensAt: "2026-12-21T16:00:00.000Z",
+    closesAt: "2026-12-22T00:31:05.442Z",
+  });
 });
 
 test("candidate validation rejects unsupported effects and unsafe URLs", () => {

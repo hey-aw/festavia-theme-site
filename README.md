@@ -7,8 +7,8 @@ in D1.
 ## Daily flow
 
 - 8:00 AM America/Los_Angeles: publish two verified candidates.
-- 5:50 PM: voting closes.
-- 6:00 PM: the existing Festavia automation applies the eligible winner,
+- Sunset in Portland: voting closes.
+- Shortly after sunset: the existing Festavia automation applies the eligible winner,
   verifies the physical light, publishes the applied theme, and sends one
   Discord DM through the Discord for Codex plugin.
 - The Sites Worker delivers poll-open, first-vote, and poll-close notifications
@@ -45,8 +45,8 @@ The helper reads the public base URL from `publisher.config.json` and the bearer
 token from the `festavia-theme-site-publisher` macOS Keychain item.
 
 The reviewable automation source prompts are in `automations/`. The poll
-publisher canonicalizes each date's opening and closing timestamps to 8:00 AM
-and 5:50 PM America/Los_Angeles.
+publisher canonicalizes each date's opening timestamp to 8:00 AM and its
+closing timestamp to standard sunset in Portland, using America/Los_Angeles.
 
 ## Festavia Hue helper
 
@@ -86,9 +86,9 @@ identifiers are never returned by a public route. A D1 outbox provides bounded
 retry and deduplication without a local process or scheduled poller. The open
 message lists both choices and links to the public poll. The close message
 reports the deterministic ranked result and final tally before the separate
-6:00 PM light application.
+post-sunset light application.
 
-Production: <https://house-with-pink-door.hey-aw.chatgpt.site>
+Production: <https://pink.awzone.com>
 
 Printable assets:
 

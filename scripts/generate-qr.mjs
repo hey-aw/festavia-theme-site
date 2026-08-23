@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import QRCode from "qrcode";
 
 const targetUrl =
-  process.argv[2] ?? "https://house-with-pink-door.hey-aw.chatgpt.site";
+  process.argv[2] ?? "https://pink.awzone.com";
 const outputDirectory = new URL("../public/", import.meta.url);
 await mkdir(outputDirectory, { recursive: true });
 

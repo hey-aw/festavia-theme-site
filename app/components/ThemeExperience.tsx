@@ -184,8 +184,8 @@ function PollResults({
         <p className="results-context">
           <Clock3 size={17} aria-hidden="true" />
           {live
-            ? `You can change your vote until ${closeTime}.`
-            : `Voting closed at ${closeTime}.`}
+            ? `You can change your vote until sunset (${closeTime}).`
+            : `Voting closed at sunset (${closeTime}).`}
         </p>
       </div>
 
@@ -529,8 +529,8 @@ export function ThemeExperience() {
             <p className="eyebrow">Tonight&apos;s choice</p>
             <h2>Which theme should light the house?</h2>
             <p>
-              Two verified themes, one evening display. Voting closes at 5:50
-              PM Pacific.
+              Two verified themes, one evening display. Voting closes at sunset
+              ({formatPacificTime(poll.closesAt)}).
             </p>
           </div>
           <div className="candidate-grid">

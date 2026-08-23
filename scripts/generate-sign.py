@@ -81,7 +81,7 @@ def build_sign(path: Path) -> None:
     )
     centered_text(
         canvas,
-        "Voting opens at 8:00 AM and closes at 5:50 PM Pacific.",
+        "Voting opens at 8:00 AM and closes at sunset.",
         116,
         "Helvetica",
         11,
@@ -89,7 +89,7 @@ def build_sign(path: Path) -> None:
     )
     centered_text(
         canvas,
-        "house-with-pink-door.hey-aw.chatgpt.site",
+        "pink.awzone.com",
         76,
         "Helvetica",
         9,
