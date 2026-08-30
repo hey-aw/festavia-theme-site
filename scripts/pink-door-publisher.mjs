@@ -4,13 +4,14 @@ import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { pollTiming } from "./poll-timing.mjs";
+import { verifiedWinnerResponse } from "./pink-door-publisher-lib.mjs";
 
 const KEYCHAIN_ACCOUNT = "festavia-theme-site";
 const KEYCHAIN_SERVICE = "festavia-theme-site-publisher";
 
 function usage() {
   console.error(
-    "Usage: pink-door-publisher.mjs <poll|result|theme|social-poll|social-theme|notifications|retry-notifications> <YYYY-MM-DD> [payload-or-image]",
+    "Usage: pink-door-publisher.mjs <poll|result|winner|theme|social-poll|social-theme|notifications|retry-notifications> <YYYY-MM-DD> [payload-or-image]",
   );
   process.exit(2);
 }
@@ -67,7 +68,7 @@ async function requestWithRetry(url, init, retries = 1) {
 
 const [operation, date, payloadPath] = process.argv.slice(2);
 if (
-  !["poll", "result", "theme", "social-poll", "social-theme", "notifications", "retry-notifications"].includes(
+  !["poll", "result", "winner", "theme", "social-poll", "social-theme", "notifications", "retry-notifications"].includes(
     operation,
   ) ||
   !date
@@ -87,9 +88,9 @@ const headers = { Authorization: `Bearer ${token}` };
 
 let endpoint;
 let init;
-if (operation === "result" || operation === "notifications") {
+if (operation === "result" || operation === "winner" || operation === "notifications") {
   endpoint =
-    operation === "result"
+    operation === "result" || operation === "winner"
       ? `/api/admin/polls/${date}/result`
       : `/api/admin/polls/${date}/notifications`;
   init = { method: "GET", headers };
@@ -127,4 +128,6 @@ if (operation === "result" || operation === "notifications") {
 }
 
 const result = await requestWithRetry(`${baseUrl}${endpoint}`, init);
-process.stdout.write(`${JSON.stringify(result)}\n`);
+const output =
+  operation === "winner" ? verifiedWinnerResponse(result, date) : result;
+process.stdout.write(`${JSON.stringify(output)}\n`);
