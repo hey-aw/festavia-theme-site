@@ -724,18 +724,13 @@ export function createFestaviaController({
   }
 
   async function applyEffect(candidate, target) {
-    if (!effectValues(target).includes(candidate.effect)) {
-      throw new Error("Candidate effect is not currently supported.");
-    }
     const normalizedPalette = validateEffectPalette(candidate.palette);
-    if (
-      normalizedPalette.length === 1 &&
-      !effectColorValues(target).includes(candidate.effect)
-    ) {
-      throw new Error(
-        "Candidate effect does not support a verified custom color.",
-      );
-    }
+    const capabilityFailure = !effectValues(target).includes(candidate.effect)
+      ? "Candidate effect is not currently supported"
+      : normalizedPalette.length === 1 &&
+          !effectColorValues(target).includes(candidate.effect)
+        ? "Candidate effect does not support a verified custom color"
+        : null;
     const tint = normalizedPalette[0] ?? null;
     const expectedTint = tint ? hexToGamutXy(tint.hex, target.color?.gamut) : null;
     const fallbackPalette = validatePalette(
@@ -750,6 +745,7 @@ export function createFestaviaController({
     }
 
     try {
+      if (capabilityFailure) throw new Error(capabilityFailure);
       await putTarget(
         target,
         buildEffectPayload(candidate.effect, tint, target.color?.gamut),
@@ -779,7 +775,8 @@ export function createFestaviaController({
       };
     } catch {
       const current = await inspectTarget();
-      const dynamicReason = `${candidate.effect} did not remain active; applied the candidate's dynamic palette fallback.`;
+      const reason = capabilityFailure ?? `${candidate.effect} did not remain active`;
+      const dynamicReason = `${reason}; applied the candidate's dynamic palette fallback.`;
       try {
         return await applyDynamic(
           candidate,
@@ -793,7 +790,7 @@ export function createFestaviaController({
           candidate,
           latest,
           fallbackPalette,
-          `${candidate.effect} did not remain active and the dynamic palette fallback was unavailable; applied a static gradient.`,
+          `${reason} and the dynamic palette fallback was unavailable; applied a static gradient.`,
         );
       }
     }
