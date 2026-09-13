@@ -478,41 +478,94 @@ test("an unsafe reserved zone is never used for dynamic scene recall", async () 
   );
 });
 
-test("tints are rejected for effects without verified color support", async () => {
-  let putCount = 0;
-  const controller = createFestaviaController({
-    sleep: async () => {},
-    request: async (method) => {
-      if (method === "PUT") putCount += 1;
-      return response(light());
-    },
-  });
+for (const [label, candidate] of [
+  ["missing effect", { ...effectCandidate, effect: "fire" }],
+  ["missing tint support", {
+    ...effectCandidate,
+    palette: [{ name: "Amber", hex: "#FFB347" }],
+  }],
+]) {
+  for (const dynamicSupported of [true, false]) {
+    test(`${label} uses verified ${dynamicSupported ? "dynamic" : "static"} fallback without an effect write`, async () => {
+      const calls = [];
+      const waits = [];
+      let recalled = false;
+      let points = [];
+      const controller = createFestaviaController({
+        sleep: async (ms) => { waits.push(ms); },
+        request: async (method, path, body) => {
+          calls.push({ method, path, body, recalled });
+          if (path === "/clip/v2/resource/light" && method === "GET") {
+            return response(light({
+              dynamicSupported,
+              dynamicStatus: recalled ? "dynamic_palette" : "none",
+              points,
+            }));
+          }
+          if (path === "/clip/v2/resource/zone" && method === "GET") {
+            return response(dynamicZone());
+          }
+          if (path === "/clip/v2/resource/scene" && method === "GET") {
+            return response(dynamicScene());
+          }
+          if (path === "/clip/v2/resource/scene/private-scene-id" && method === "GET") {
+            return response(dynamicScene({ active: recalled ? "dynamic_palette" : "inactive" }));
+          }
+          if (method === "PUT") {
+            if (body.recall) recalled = true;
+            if (body.gradient) points = body.gradient.points;
+          }
+          return response({});
+        },
+      });
+      const result = await controller.apply(candidate);
+      assert.equal(result.ok, true);
+      assert.equal(result.candidateId, candidate.id);
+      assert.equal(result.observanceName, candidate.observanceName);
+      assert.equal(result.mode, dynamicSupported ? "Dynamic palette" : "Static gradient");
+      assert.equal(result.effect, "no_effect");
+      assert.equal(result.fallbackUsed, true);
+      assert.deepEqual(result.palette, fallbackPalette);
+      assert.match(result.substitutionNote, /not currently supported|does not support a verified custom color/);
+      const writes = calls.filter((call) => call.method === "PUT");
+      assert.ok(writes.length > 0);
+      for (const write of writes) {
+        assert.ok([
+          "/clip/v2/resource/light/private-light-id",
+          "/clip/v2/resource/scene/private-scene-id",
+        ].includes(write.path));
+        if (write.body.effects_v2) {
+          assert.equal(write.body.effects_v2.action.effect, "no_effect");
+        }
+      }
+      if (dynamicSupported) {
+        assert.ok(waits.includes(30000));
+        assert.equal(calls.filter((call) => call.method === "GET" &&
+          call.path === "/clip/v2/resource/scene/private-scene-id" && call.recalled).length, 2);
+      } else {
+        assert.equal(writes.length, 1);
+        assert.equal(writes[0].body.gradient.points.length, fallbackPalette.length);
+      }
+    });
+  }
+}
 
-  await assert.rejects(
-    controller.apply({
-      ...effectCandidate,
-      palette: [{ name: "Amber", hex: "#FFB347" }],
-    }),
-    /does not support a verified custom color/,
-  );
-  assert.equal(putCount, 0);
-});
-
-test("unsupported effects fail before changing the light", async () => {
-  let putCount = 0;
-  const controller = createFestaviaController({
-    sleep: async () => {},
-    request: async (method) => {
-      if (method === "PUT") putCount += 1;
-      return response(light());
-    },
-  });
-
-  await assert.rejects(
-    controller.apply({ ...effectCandidate, effect: "fire" }),
-    /not currently supported/,
-  );
-  assert.equal(putCount, 0);
+test("capability fallback still rejects malformed palettes and active treatments before writing", async () => {
+  for (const [candidate, state, error] of [
+    [{ ...effectCandidate, effect: "fire", fallbackPalette: [] }, light(), /fallbackPalette/],
+    [{ ...effectCandidate, effect: "fire", palette: fallbackPalette }, light(), /palette/],
+    [{ ...effectCandidate, effect: "fire" }, light({ dynamicStatus: "dynamic_palette" }), /active timed or dynamic/],
+    [{ ...effectCandidate, effect: "fire" }, { ...light(), timed_effects: { status: "sunrise" } }, /active timed or dynamic/],
+  ]) {
+    const controller = createFestaviaController({
+      sleep: async () => {},
+      request: async (method) => {
+        assert.equal(method, "GET");
+        return response(state);
+      },
+    });
+    await assert.rejects(controller.apply(candidate), error);
+  }
 });
 
 test("target and unsafe state overrides are rejected before any PUT", async () => {
@@ -556,7 +609,7 @@ test("automation prompts invoke the skill through the project adapter", async ()
 
   for (const prompt of [candidatePrompt, observancePrompt]) {
     assert.match(prompt, /\$control-hue-lights/);
-    assert.match(prompt, /scripts\/festavia-hue\.mjs` helper is authoritative/);
+    assert.match(prompt, /(?:scripts\/festavia-hue\.mjs` helper is authoritative|helper `scripts\/festavia-hue\.mjs` is authoritative)/);
     assert.match(prompt, /node scripts\/festavia-hue\.mjs inspect/);
   }
   assert.match(candidatePrompt, /This is a read-only lighting run/);
@@ -566,7 +619,7 @@ test("automation prompts invoke the skill through the project adapter", async ()
   assert.match(candidatePrompt, /effects_v2\.status\.parameters/);
   assert.match(
     observancePrompt,
-    /node scripts\/festavia-hue\.mjs apply <candidate-path>/,
+    /node scripts\/festavia-hue\.mjs apply <candidate-json-path>/,
   );
   assert.match(observancePrompt, /two readbacks 30 seconds apart/);
   assert.match(observancePrompt, /Dynamic palette/);
